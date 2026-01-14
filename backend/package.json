@@ -1,0 +1,76 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "main": "index.js",
+  "types": "commonjs",
+  "imports": {
+    "#*": "./src/*.js",
+    "#api/*": "./src/api/*.js",
+    "#core/*": "./src/core/*.js",
+    "#infrastructure/*": "./src/infrastructure/*.js",
+    "#shared/*": "./src/shared/*.js"
+  },
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "prepare": "husky install"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@aws-lambda-powertools/logger": "^2.30.2",
+    "@aws-sdk/client-dynamodb": "^3.968.0",
+    "@aws-sdk/lib-dynamodb": "^3.968.0",
+    "aws-lambda": "^1.0.6",
+    "axios": "^1.13.2",
+    "bcrypt": "^6.0.0",
+    "compression": "^1.8.1",
+    "cors": "^2.8.5",
+    "dayjs": "^1.11.19",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "helmet": "^8.1.0",
+    "ioredis": "^5.9.1",
+    "joi": "^18.0.2",
+    "jsonwebtoken": "^9.0.3",
+    "lodash": "^4.17.21",
+    "nanoid": "^5.1.6",
+    "redis": "^5.10.0",
+    "uuid": "^13.0.0",
+    "winston": "^3.19.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.28.6",
+    "@babel/preset-env": "^7.28.6",
+    "@commitlint/cli": "^20.3.1",
+    "@commitlint/config-conventional": "^20.3.1",
+    "@faker-js/faker": "^10.2.0",
+    "aws-sdk": "^2.1693.0",
+    "babel-jest": "^30.2.0",
+    "commitizen": "^4.3.1",
+    "esbuild": "^0.27.2",
+    "eslint": "^8.57.1",
+    "eslint-config-airbnb-base": "^15.0.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-prettier": "^5.5.4",
+    "husky": "^8.0.0",
+    "jest": "^30.2.0",
+    "lint-staged": "^16.2.7",
+    "nodemon": "^3.1.11",
+    "prettier": "^3.7.4",
+    "serverless": "^4.30.0",
+    "serverless-esbuild": "^1.57.0",
+    "serverless-offline": "^14.4.0",
+    "supertest": "^7.2.2"
+  },
+  "lint-staged": {
+    "*.ts": ["eslint --fix", "prettier --write"],
+    "*.json": ["prettier --write"]
+  }
+}
