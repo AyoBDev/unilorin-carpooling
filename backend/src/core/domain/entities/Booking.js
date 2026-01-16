@@ -1,834 +1,437 @@
 /**
- * Booking Entity - Represents a passenger's booking for a ride
- * Domain Entity following DDD principles
- * University of Ilorin Carpooling Platform
+ * Booking Entity - With Offline Payment Support
+ * Path: src/core/domain/entities/Booking.js
+ *
+ * Phase 1: Offline payment (cash to driver)
+ * Phase 2: Online payment integration
  */
 
-const { parseDate } = require('./utils/entityHelpers');
+const { nanoid } = require('nanoid');
+const dayjs = require('dayjs');
+
+/**
+ * Booking Status Enum
+ */
+const BookingStatus = {
+  PENDING: 'pending', // Booking created, awaiting confirmation
+  CONFIRMED: 'confirmed', // Driver confirmed the booking
+  CANCELLED: 'cancelled', // Booking cancelled
+  COMPLETED: 'completed', // Ride completed
+  NO_SHOW: 'no_show', // Passenger didn't show up
+  IN_PROGRESS: 'in_progress', // Ride is ongoing
+};
+
+/**
+ * Payment Status Enum (for offline payments)
+ */
+const PaymentStatus = {
+  PENDING: 'pending', // Payment not yet made
+  CASH_RECEIVED: 'cash_received', // Driver confirmed cash payment
+  CASH_PENDING: 'cash_pending', // Waiting for cash payment
+  DISPUTED: 'disputed', // Payment dispute
+  WAIVED: 'waived', // Free ride (promotional/special case)
+  ONLINE_PENDING: 'online_pending', // Phase 2: Online payment initiated
+  ONLINE_COMPLETED: 'online_completed', // Phase 2: Online payment successful
+};
+
+/**
+ * Payment Method Enum
+ */
+const PaymentMethod = {
+  CASH: 'cash', // Phase 1: Default
+  BANK_TRANSFER: 'bank_transfer', // Phase 1: Alternative offline
+  PAYSTACK: 'paystack', // Phase 2: Online payment
+  WALLET: 'wallet', // Phase 2: In-app wallet
+  FREE: 'free', // Special cases
+};
 
 class Booking {
-  constructor({
-    bookingId,
-    rideId,
-    passengerId, // User ID of the passenger
-    driverId,
+  constructor(data = {}) {
+    // Core identifiers
+    this.id = data.id || `BOOKING#${nanoid()}`;
+    this.rideId = data.rideId;
+    this.passengerId = data.passengerId;
+    this.driverId = data.driverId;
 
-    // Booking Details
-    numberOfSeats = 1,
-    pickupPoint, // { id, name, coordinates, estimatedTime }
-    dropoffPoint = null, // Optional specific dropoff if different from ride endpoint
+    // Booking details
+    this.pickupPointId = data.pickupPointId;
+    this.pickupLocation = data.pickupLocation; // { address, coordinates, landmark }
+    this.dropoffLocation = data.dropoffLocation; // { address, coordinates, landmark }
+    this.seats = data.seats || 1;
 
-    // Pricing
-    pricePerSeat,
-    totalPrice,
-    currency = 'NGN',
-    paymentMethod = 'cash', // 'cash' | 'transfer' | 'wallet'
-    paymentStatus = 'pending', // 'pending' | 'processing' | 'completed' | 'failed' | 'refunded'
+    // Status tracking
+    this.status = data.status || BookingStatus.PENDING;
+    this.paymentStatus = data.paymentStatus || PaymentStatus.PENDING;
+    this.paymentMethod = data.paymentMethod || PaymentMethod.CASH;
 
-    // Status
-    status = 'pending', // 'pending' | 'confirmed' | 'cancelled' | 'completed' | 'no-show'
-    confirmationCode = null,
-    cancellationReason = null,
-    cancelledBy = null, // 'passenger' | 'driver' | 'system'
+    // Pricing (fixed for Phase 1)
+    this.fare = data.fare || this.calculateFare(data);
+    this.platformFee = data.platformFee || 0; // Phase 2
+    this.totalAmount = data.totalAmount || this.fare;
+    this.amountPaid = data.amountPaid || 0;
+    this.currency = data.currency || 'NGN';
 
-    // Passenger Information (cached from user)
-    passengerName,
-    passengerPhone,
-    passengerType, // 'student' | 'staff'
-    passengerRating = 0,
+    // Timing
+    this.scheduledPickupTime = data.scheduledPickupTime;
+    this.actualPickupTime = data.actualPickupTime;
+    this.estimatedArrivalTime = data.estimatedArrivalTime;
+    this.actualArrivalTime = data.actualArrivalTime;
 
-    // Driver Information (cached from driver)
-    driverName,
-    driverPhone,
-    vehicleInfo = {}, // { make, model, color, plateNumber }
+    // Verification & Tracking
+    this.bookingCode = data.bookingCode || this.generateBookingCode();
+    this.verificationCode = data.verificationCode || this.generateVerificationCode();
+    this.qrCode = data.qrCode; // For easy verification
 
-    // Ride Information (cached from ride)
-    departureDate,
-    departureTime,
-    startLocation,
-    endLocation,
-    estimatedDistance,
-    estimatedDuration,
+    // Payment tracking for offline payments
+    this.paymentConfirmedBy = data.paymentConfirmedBy; // Driver ID who confirmed payment
+    this.paymentConfirmedAt = data.paymentConfirmedAt;
+    this.paymentNotes = data.paymentNotes; // Any payment-related notes
+    this.paymentProof = data.paymentProof; // Phase 1: Photo of transfer receipt, etc.
 
-    // Tracking
-    passengerCheckedIn = false,
-    checkedInAt = null,
-    passengerPickedUp = false,
-    pickedUpAt = null,
-    passengerDroppedOff = false,
-    droppedOffAt = null,
+    // Cancellation details
+    this.cancelledBy = data.cancelledBy;
+    this.cancelledAt = data.cancelledAt;
+    this.cancellationReason = data.cancellationReason;
+    this.cancellationFee = data.cancellationFee || 0;
 
-    // Communication
-    messageThreadId = null,
-    lastMessageAt = null,
-    unreadMessages = 0,
-
-    // Ratings
-    driverRating = null,
-    vehicleRating = null,
-    experienceRating = null,
-    ratingComments = null,
-    ratedAt = null,
-
-    // Notifications
-    reminderSent = false,
-    reminderSentAt = null,
-    arrivalNotificationSent = false,
-
-    // Emergency
-    emergencyContactNotified = false,
-    emergencyTriggeredAt = null,
-
-    // Compliance
-    termsAccepted = false,
-    termsAcceptedAt = null,
-    insuranceAcknowledged = false,
+    // Ratings (post-ride)
+    this.passengerRating = data.passengerRating;
+    this.driverRating = data.driverRating;
+    this.ratingComments = data.ratingComments;
 
     // Metadata
-    bookingSource = 'app', // 'app' | 'web' | 'admin'
-    deviceInfo = null,
-    ipAddress = null,
-    notes = null,
+    this.notes = data.notes;
+    this.tags = data.tags || [];
+    this.isRecurring = data.isRecurring || false;
+    this.recurringId = data.recurringId; // Link to recurring booking series
 
     // Timestamps
-    createdAt = new Date(),
-    updatedAt = new Date(),
-    confirmedAt = null,
-    cancelledAt = null,
-    completedAt = null,
-    expiresAt = null, // For pending bookings
-  }) {
-    this.bookingId = bookingId;
-    this.rideId = rideId;
-    this.passengerId = passengerId;
-    this.driverId = driverId;
-
-    // Booking Details
-    this.numberOfSeats = numberOfSeats;
-    this.pickupPoint = pickupPoint;
-    this.dropoffPoint = dropoffPoint;
-
-    // Pricing
-    this.pricePerSeat = pricePerSeat;
-    this.totalPrice = totalPrice || pricePerSeat * numberOfSeats;
-    this.currency = currency;
-    this.paymentMethod = paymentMethod;
-    this.paymentStatus = paymentStatus;
-
-    // Status
-    this.status = status;
-    this.confirmationCode = confirmationCode || this.generateConfirmationCode();
-    this.cancellationReason = cancellationReason;
-    this.cancelledBy = cancelledBy;
-
-    // Passenger Information
-    this.passengerName = passengerName;
-    this.passengerPhone = passengerPhone;
-    this.passengerType = passengerType;
-    this.passengerRating = passengerRating;
-
-    // Driver Information
-    this.driverName = driverName;
-    this.driverPhone = driverPhone;
-    this.vehicleInfo = vehicleInfo;
-
-    // Ride Information
-    this.departureDate = departureDate instanceof Date ? departureDate : new Date(departureDate);
-    this.departureTime = departureTime;
-    this.startLocation = startLocation;
-    this.endLocation = endLocation;
-    this.estimatedDistance = estimatedDistance;
-    this.estimatedDuration = estimatedDuration;
-
-    // Tracking
-    this.passengerCheckedIn = passengerCheckedIn;
-    this.checkedInAt = parseDate(checkedInAt);
-    this.passengerPickedUp = passengerPickedUp;
-    this.pickedUpAt = parseDate(pickedUpAt);
-    this.passengerDroppedOff = passengerDroppedOff;
-    this.droppedOffAt = parseDate(droppedOffAt);
-
-    // Communication
-    this.messageThreadId = messageThreadId;
-    this.lastMessageAt = parseDate(lastMessageAt);
-    this.unreadMessages = unreadMessages;
-
-    // Ratings
-    this.driverRating = driverRating;
-    this.vehicleRating = vehicleRating;
-    this.experienceRating = experienceRating;
-    this.ratingComments = ratingComments;
-    this.ratedAt = parseDate(ratedAt);
-
-    // Notifications
-    this.reminderSent = reminderSent;
-    this.reminderSentAt = parseDate(reminderSentAt);
-    this.arrivalNotificationSent = arrivalNotificationSent;
-
-    // Emergency
-    this.emergencyContactNotified = emergencyContactNotified;
-    this.emergencyTriggeredAt = parseDate(emergencyTriggeredAt);
-
-    // Compliance
-    this.termsAccepted = termsAccepted;
-    this.termsAcceptedAt = parseDate(termsAcceptedAt);
-    this.insuranceAcknowledged = insuranceAcknowledged;
-
-    // Metadata
-    this.bookingSource = bookingSource;
-    this.deviceInfo = deviceInfo;
-    this.ipAddress = ipAddress;
-    this.notes = notes;
-
-    // Timestamps
-    this.createdAt = createdAt instanceof Date ? createdAt : new Date(createdAt);
-    this.updatedAt = updatedAt instanceof Date ? updatedAt : new Date(updatedAt);
-    this.confirmedAt = parseDate(confirmedAt);
-    this.cancelledAt = parseDate(cancelledAt);
-    this.completedAt = parseDate(completedAt);
-    this.expiresAt = expiresAt ? parseDate(expiresAt) : this.calculateExpiryTime();
-
-    // Validate on creation
-    this.validate();
+    this.createdAt = data.createdAt || new Date().toISOString();
+    this.updatedAt = data.updatedAt || new Date().toISOString();
+    this.completedAt = data.completedAt;
   }
 
-  // Getters
-  get isPending() {
-    return this.status === 'pending';
+  /**
+   * Calculate fare based on ride details (Phase 1: Fixed pricing)
+   */
+  calculateFare(data) {
+    // Phase 1: Fixed pricing based on route
+    // // ₦200 base fare
+    const perSeatFare = data.seats > 1 ? (data.seats - 1) * 50 : 0; // Extra seats
+
+    // You can add distance-based calculation when available
+    // For now, using fixed rates for common routes
+    const routeFares = {
+      'campus-tanke': 200,
+      'campus-fate': 250,
+      'campus-basin': 300,
+      'campus-gaa': 300,
+      default: 250,
+    };
+
+    const routeKey = data.routeKey || 'default';
+    const routeFare = routeFares[routeKey] || routeFares.default;
+
+    return routeFare + perSeatFare;
   }
 
-  get isConfirmed() {
-    return this.status === 'confirmed';
+  /**
+   * Generate unique booking code for reference
+   */
+  generateBookingCode() {
+    // Format: UIL-YYMMDD-XXXX (e.g., UIL-240115-A7K9)
+    const date = dayjs().format('YYMMDD');
+    const random = nanoid(4).toUpperCase();
+    return `UIL-${date}-${random}`;
   }
 
-  get isCancelled() {
-    return this.status === 'cancelled';
+  /**
+   * Generate verification code for driver-passenger verification
+   */
+  generateVerificationCode() {
+    // 4-digit code for easy verification
+    return Math.floor(1000 + Math.random() * 9000).toString();
   }
 
-  get isCompleted() {
-    return this.status === 'completed';
-  }
-
-  get isNoShow() {
-    return this.status === 'no-show';
-  }
-
-  get isActive() {
-    return ['pending', 'confirmed'].includes(this.status);
-  }
-
-  get isPaid() {
-    return this.paymentStatus === 'completed';
-  }
-
-  get isExpired() {
-    return this.expiresAt && new Date() > this.expiresAt;
-  }
-
-  get canBeCancelled() {
-    if (!this.isActive) return false;
-
-    const now = new Date();
-    const departureDateTime = this.getDepartureDateTime();
-    const oneHourBeforeDeparture = new Date(departureDateTime.getTime() - 60 * 60 * 1000);
-
-    return now < oneHourBeforeDeparture;
-  }
-
-  get requiresPayment() {
-    return this.paymentStatus === 'pending' && this.paymentMethod !== 'cash';
-  }
-
-  get canBeRated() {
-    return this.isCompleted && !this.driverRating;
-  }
-
-  get timeUntilDeparture() {
-    const now = new Date();
-    const departure = this.getDepartureDateTime();
-    const diff = departure - now;
-
-    if (diff < 0) return null;
-
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-
-    return { hours, minutes, milliseconds: diff };
-  }
-
-  get tripProgress() {
-    if (!this.passengerCheckedIn) return 'not-started';
-    if (this.passengerCheckedIn && !this.passengerPickedUp) return 'checked-in';
-    if (this.passengerPickedUp && !this.passengerDroppedOff) return 'in-transit';
-    if (this.passengerDroppedOff) return 'completed';
-    return 'unknown';
-  }
-
-  // Validation
-  validate() {
-    const errors = [];
-
-    if (!this.bookingId) errors.push('Booking ID is required');
-    if (!this.rideId) errors.push('Ride ID is required');
-    if (!this.passengerId) errors.push('Passenger ID is required');
-    if (!this.driverId) errors.push('Driver ID is required');
-
-    // Seats validation
-    if (this.numberOfSeats < 1 || this.numberOfSeats > 7) {
-      errors.push('Number of seats must be between 1 and 7');
-    }
-
-    // Pickup point validation
-    if (!this.pickupPoint || !this.pickupPoint.coordinates) {
-      errors.push('Valid pickup point with coordinates is required');
-    }
-
-    // Pricing validation
-    if (this.pricePerSeat < 0) {
-      errors.push('Price per seat cannot be negative');
-    }
-    if (this.totalPrice < 0) {
-      errors.push('Total price cannot be negative');
-    }
-
-    // Payment method validation
-    const validPaymentMethods = ['cash', 'transfer', 'wallet'];
-    if (!validPaymentMethods.includes(this.paymentMethod)) {
-      errors.push('Invalid payment method');
-    }
-
-    // Payment status validation
-    const validPaymentStatuses = ['pending', 'processing', 'completed', 'failed', 'refunded'];
-    if (!validPaymentStatuses.includes(this.paymentStatus)) {
-      errors.push('Invalid payment status');
-    }
-
-    // Status validation
-    const validStatuses = ['pending', 'confirmed', 'cancelled', 'completed', 'no-show'];
-    if (!validStatuses.includes(this.status)) {
-      errors.push('Invalid booking status');
-    }
-
-    // Passenger information validation
-    if (!this.passengerName) errors.push('Passenger name is required');
-    if (!this.passengerPhone) errors.push('Passenger phone is required');
-    if (!['student', 'staff'].includes(this.passengerType)) {
-      errors.push('Invalid passenger type');
-    }
-
-    // Schedule validation
-    if (!this.departureDate) errors.push('Departure date is required');
-    if (!this.departureTime) errors.push('Departure time is required');
-
-    // Location validation
-    if (!this.startLocation || !this.startLocation.coordinates) {
-      errors.push('Valid start location is required');
-    }
-    if (!this.endLocation || !this.endLocation.coordinates) {
-      errors.push('Valid end location is required');
-    }
-
-    // Terms acceptance
-    if (this.status === 'confirmed' && !this.termsAccepted) {
-      errors.push('Terms must be accepted before confirmation');
-    }
-
-    if (errors.length > 0) {
-      throw new Error(`Booking validation failed: ${errors.join(', ')}`);
-    }
-
-    return true;
-  }
-
-  generateConfirmationCode() {
-    // Generate a 6-character alphanumeric code
-    const characters = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let code = '';
-
-    for (let i = 0; i < 6; i += 1) {
-      code += characters.charAt(Math.floor(Math.random() * characters.length));
-    }
-
-    return code;
-  }
-
-  getDepartureDateTime() {
-    const [hours, minutes] = this.departureTime.split(':').map(Number);
-    const dateTime = new Date(this.departureDate);
-    dateTime.setHours(hours, minutes, 0, 0);
-    return dateTime;
-  }
-
-  calculateExpiryTime() {
-    // Pending bookings expire after 10 minutes if not confirmed
-    if (this.status === 'pending') {
-      const expiryTime = new Date(this.createdAt);
-      expiryTime.setMinutes(expiryTime.getMinutes() + 10);
-      return expiryTime;
-    }
-    return null;
-  }
-
-  // Status Management
+  /**
+   * Confirm booking
+   */
   confirm() {
-    if (this.status !== 'pending') {
+    if (this.status !== BookingStatus.PENDING) {
       throw new Error('Only pending bookings can be confirmed');
     }
 
-    if (this.isExpired) {
-      throw new Error('Booking has expired');
-    }
-
-    if (!this.termsAccepted) {
-      throw new Error('Terms must be accepted before confirmation');
-    }
-
-    if (this.requiresPayment && !this.isPaid) {
-      throw new Error('Payment must be completed before confirmation');
-    }
-
-    this.status = 'confirmed';
-    this.confirmedAt = new Date();
-    this.expiresAt = null; // Remove expiry for confirmed bookings
-    this.updatedAt = new Date();
-
-    return true;
+    this.status = BookingStatus.CONFIRMED;
+    this.updatedAt = new Date().toISOString();
+    return this;
   }
 
-  cancel(reason, cancelledBy) {
-    if (!this.canBeCancelled) {
-      throw new Error('Booking cannot be cancelled at this time');
+  /**
+   * Cancel booking
+   */
+  cancel(cancelledBy, reason) {
+    if ([BookingStatus.COMPLETED, BookingStatus.IN_PROGRESS].includes(this.status)) {
+      throw new Error('Cannot cancel completed or in-progress bookings');
     }
 
-    if (!reason) {
-      throw new Error('Cancellation reason is required');
-    }
-
-    const validCancelledBy = ['passenger', 'driver', 'system'];
-    if (!validCancelledBy.includes(cancelledBy)) {
-      throw new Error('Invalid cancellation source');
-    }
-
-    this.status = 'cancelled';
-    this.cancellationReason = reason;
+    this.status = BookingStatus.CANCELLED;
     this.cancelledBy = cancelledBy;
-    this.cancelledAt = new Date();
-    this.updatedAt = new Date();
+    this.cancelledAt = new Date().toISOString();
+    this.cancellationReason = reason;
+    this.updatedAt = new Date().toISOString();
 
-    // Initiate refund if payment was made
-    if (this.isPaid) {
-      this.paymentStatus = 'refunded';
+    // Calculate cancellation fee if applicable
+    const hoursUntilRide = dayjs(this.scheduledPickupTime).diff(dayjs(), 'hours');
+    if (hoursUntilRide < 1) {
+      this.cancellationFee = this.fare * 0.5; // 50% fee for last-minute cancellation
     }
 
-    return true;
+    return this;
   }
 
-  markAsNoShow() {
-    if (this.status !== 'confirmed') {
+  /**
+   * Start ride
+   */
+  startRide() {
+    if (this.status !== BookingStatus.CONFIRMED) {
+      throw new Error('Only confirmed bookings can be started');
+    }
+
+    this.status = BookingStatus.IN_PROGRESS;
+    this.actualPickupTime = new Date().toISOString();
+    this.updatedAt = new Date().toISOString();
+    return this;
+  }
+
+  /**
+   * Complete booking
+   */
+  complete() {
+    if (this.status !== BookingStatus.IN_PROGRESS) {
+      throw new Error('Only in-progress bookings can be completed');
+    }
+
+    this.status = BookingStatus.COMPLETED;
+    this.completedAt = new Date().toISOString();
+    this.actualArrivalTime = new Date().toISOString();
+    this.updatedAt = new Date().toISOString();
+    return this;
+  }
+
+  /**
+   * Confirm cash payment received (Phase 1)
+   */
+  confirmCashPayment(driverId, amount, notes) {
+    if (this.paymentMethod !== PaymentMethod.CASH) {
+      throw new Error('This method is only for cash payments');
+    }
+
+    this.paymentStatus = PaymentStatus.CASH_RECEIVED;
+    this.paymentConfirmedBy = driverId;
+    this.paymentConfirmedAt = new Date().toISOString();
+    this.amountPaid = amount || this.totalAmount;
+    this.paymentNotes = notes;
+    this.updatedAt = new Date().toISOString();
+
+    return this;
+  }
+
+  /**
+   * Mark passenger as no-show
+   */
+  markNoShow() {
+    if (this.status !== BookingStatus.CONFIRMED) {
       throw new Error('Only confirmed bookings can be marked as no-show');
     }
 
-    const departureDateTime = this.getDepartureDateTime();
-    const fifteenMinutesAfterDeparture = new Date(departureDateTime.getTime() + 15 * 60 * 1000);
+    const waitTimeExpired = dayjs().isAfter(dayjs(this.scheduledPickupTime).add(15, 'minutes'));
 
-    if (new Date() < fifteenMinutesAfterDeparture) {
-      throw new Error('Cannot mark as no-show before 15 minutes after departure');
+    if (!waitTimeExpired) {
+      throw new Error('Cannot mark as no-show before wait time expires');
     }
 
-    this.status = 'no-show';
-    this.updatedAt = new Date();
-
-    return true;
+    this.status = BookingStatus.NO_SHOW;
+    this.updatedAt = new Date().toISOString();
+    return this;
   }
 
-  complete() {
-    if (this.status !== 'confirmed') {
-      throw new Error('Only confirmed bookings can be completed');
+  /**
+   * Add passenger rating
+   */
+  addPassengerRating(rating, comments) {
+    if (this.status !== BookingStatus.COMPLETED) {
+      throw new Error('Can only rate completed bookings');
     }
 
-    if (!this.passengerDroppedOff) {
-      throw new Error('Passenger must be dropped off before completing booking');
+    if (rating < 1 || rating > 5) {
+      throw new Error('Rating must be between 1 and 5');
     }
 
-    this.status = 'completed';
-    this.completedAt = new Date();
-    this.updatedAt = new Date();
-
-    return true;
+    this.passengerRating = rating;
+    if (comments) {
+      this.ratingComments = { ...this.ratingComments, passenger: comments };
+    }
+    this.updatedAt = new Date().toISOString();
+    return this;
   }
 
-  // Terms Management
-  acceptTerms() {
-    if (this.termsAccepted) {
-      throw new Error('Terms already accepted');
+  /**
+   * Add driver rating
+   */
+  addDriverRating(rating, comments) {
+    if (this.status !== BookingStatus.COMPLETED) {
+      throw new Error('Can only rate completed bookings');
     }
 
-    this.termsAccepted = true;
-    this.termsAcceptedAt = new Date();
-    this.insuranceAcknowledged = true;
-    this.updatedAt = new Date();
+    if (rating < 1 || rating > 5) {
+      throw new Error('Rating must be between 1 and 5');
+    }
 
-    return true;
+    this.driverRating = rating;
+    if (comments) {
+      this.ratingComments = { ...this.ratingComments, driver: comments };
+    }
+    this.updatedAt = new Date().toISOString();
+    return this;
   }
 
-  // Payment Management
-  updatePaymentStatus(status, paymentDetails = {}) {
-    const validStatuses = ['pending', 'processing', 'completed', 'failed', 'refunded'];
-
-    if (!validStatuses.includes(status)) {
-      throw new Error('Invalid payment status');
-    }
-
-    this.paymentStatus = status;
-    this.paymentDetails = {
-      ...this.paymentDetails,
-      ...paymentDetails,
-      updatedAt: new Date(),
-    };
-
-    this.updatedAt = new Date();
-
-    // Auto-confirm booking if payment is completed
-    if (status === 'completed' && this.isPending && this.termsAccepted) {
-      this.confirm();
-    }
-
-    return this.paymentStatus;
+  /**
+   * Check if booking can be cancelled without fee
+   */
+  canCancelWithoutFee() {
+    const hoursUntilRide = dayjs(this.scheduledPickupTime).diff(dayjs(), 'hours');
+    return hoursUntilRide >= 1;
   }
 
-  // Tracking Management
-  checkIn() {
-    if (!this.isConfirmed) {
-      throw new Error('Only confirmed bookings can be checked in');
-    }
-
-    if (this.passengerCheckedIn) {
-      throw new Error('Passenger already checked in');
-    }
-
-    // Check if within 30 minutes of departure
-    const now = new Date();
-    const departureDateTime = this.getDepartureDateTime();
-    const thirtyMinutesBeforeDeparture = new Date(departureDateTime.getTime() - 30 * 60 * 1000);
-
-    if (now < thirtyMinutesBeforeDeparture) {
-      throw new Error('Check-in is only available 30 minutes before departure');
-    }
-
-    this.passengerCheckedIn = true;
-    this.checkedInAt = new Date();
-    this.updatedAt = new Date();
-
-    return true;
+  /**
+   * Check if booking is editable
+   */
+  isEditable() {
+    return this.status === BookingStatus.PENDING || this.status === BookingStatus.CONFIRMED;
   }
 
-  recordPickup() {
-    if (!this.passengerCheckedIn) {
-      throw new Error('Passenger must check in before pickup');
-    }
-
-    if (this.passengerPickedUp) {
-      throw new Error('Passenger already picked up');
-    }
-
-    this.passengerPickedUp = true;
-    this.pickedUpAt = new Date();
-    this.updatedAt = new Date();
-
-    return true;
-  }
-
-  recordDropoff() {
-    if (!this.passengerPickedUp) {
-      throw new Error('Passenger must be picked up before dropoff');
-    }
-
-    if (this.passengerDroppedOff) {
-      throw new Error('Passenger already dropped off');
-    }
-
-    this.passengerDroppedOff = true;
-    this.droppedOffAt = new Date();
-    this.updatedAt = new Date();
-
-    // Auto-complete booking
-    this.complete();
-
-    return true;
-  }
-
-  // Rating Management
-  rateExperience(driverRating, vehicleRating, experienceRating, comments = null) {
-    if (!this.canBeRated) {
-      throw new Error('Cannot rate this booking');
-    }
-
-    // Validate ratings
-    const ratings = { driverRating, vehicleRating, experienceRating };
-
-    Object.entries(ratings).forEach(([key, value]) => {
-      if (value < 1 || value > 5) {
-        throw new Error(`${key} must be between 1 and 5`);
-      }
-    });
-
-    this.driverRating = driverRating;
-    this.vehicleRating = vehicleRating;
-    this.experienceRating = experienceRating;
-    this.ratingComments = comments;
-    this.ratedAt = new Date();
-    this.updatedAt = new Date();
-
+  /**
+   * Get booking summary for notifications
+   */
+  getSummary() {
     return {
-      driverRating: this.driverRating,
-      vehicleRating: this.vehicleRating,
-      experienceRating: this.experienceRating,
-      averageRating: (driverRating + vehicleRating + experienceRating) / 3,
+      bookingCode: this.bookingCode,
+      status: this.status,
+      fare: this.fare,
+      pickupTime: this.scheduledPickupTime,
+      pickupLocation: this.pickupLocation.address,
+      dropoffLocation: this.dropoffLocation.address,
+      verificationCode: this.verificationCode,
+      paymentMethod: this.paymentMethod,
+      paymentStatus: this.paymentStatus,
     };
   }
 
-  // Communication Management
-  updateMessageThread(threadId) {
-    this.messageThreadId = threadId;
-    this.lastMessageAt = new Date();
-    this.unreadMessages += 1;
-    this.updatedAt = new Date();
+  /**
+   * Validate booking data
+   */
+  validate() {
+    const errors = [];
 
-    return this.messageThreadId;
-  }
+    if (!this.rideId) errors.push('Ride ID is required');
+    if (!this.passengerId) errors.push('Passenger ID is required');
+    if (!this.driverId) errors.push('Driver ID is required');
+    if (!this.pickupLocation) errors.push('Pickup location is required');
+    if (!this.dropoffLocation) errors.push('Dropoff location is required');
+    if (this.seats < 1 || this.seats > 7) errors.push('Seats must be between 1 and 7');
+    if (!this.scheduledPickupTime) errors.push('Scheduled pickup time is required');
+    if (this.fare < 0) errors.push('Fare cannot be negative');
 
-  markMessagesAsRead() {
-    this.unreadMessages = 0;
-    this.updatedAt = new Date();
+    // Check if pickup time is in the future
+    if (dayjs(this.scheduledPickupTime).isBefore(dayjs())) {
+      errors.push('Pickup time must be in the future');
+    }
+
+    if (errors.length > 0) {
+      throw new Error(`Validation failed: ${errors.join(', ')}`);
+    }
 
     return true;
   }
 
-  // Notification Management
-  sendReminder() {
-    if (this.reminderSent) {
-      throw new Error('Reminder already sent');
-    }
-
-    if (!this.isActive) {
-      throw new Error('Cannot send reminder for inactive booking');
-    }
-
-    // Check if within 2 hours of departure
-    const now = new Date();
-    const departureDateTime = this.getDepartureDateTime();
-    const twoHoursBeforeDeparture = new Date(departureDateTime.getTime() - 2 * 60 * 60 * 1000);
-
-    if (now < twoHoursBeforeDeparture) {
-      throw new Error('Too early to send reminder');
-    }
-
-    this.reminderSent = true;
-    this.reminderSentAt = new Date();
-    this.updatedAt = new Date();
-
-    return true;
-  }
-
-  sendArrivalNotification() {
-    if (this.arrivalNotificationSent) {
-      throw new Error('Arrival notification already sent');
-    }
-
-    if (!this.isConfirmed) {
-      throw new Error('Cannot send arrival notification for unconfirmed booking');
-    }
-
-    this.arrivalNotificationSent = true;
-    this.updatedAt = new Date();
-
-    return true;
-  }
-
-  // Emergency Management
-  triggerEmergency(reason) {
-    if (!this.isActive) {
-      throw new Error('Emergency can only be triggered for active bookings');
-    }
-
-    this.emergencyContactNotified = true;
-    this.emergencyTriggeredAt = new Date();
-    this.emergencyReason = reason;
-    this.updatedAt = new Date();
-
-    return {
-      triggered: true,
-      timestamp: this.emergencyTriggeredAt,
-      reason: this.emergencyReason,
-    };
-  }
-
-  // Helper Methods
-  getEstimatedPickupTime() {
-    if (!this.pickupPoint || !this.pickupPoint.estimatedTime) {
-      return this.departureTime;
-    }
-
-    return this.pickupPoint.estimatedTime;
-  }
-
-  getEstimatedDropoffTime() {
-    if (this.dropoffPoint && this.dropoffPoint.estimatedTime) {
-      return this.dropoffPoint.estimatedTime;
-    }
-
-    // Calculate based on departure time and duration
-    const departureDateTime = this.getDepartureDateTime();
-    const dropoffDateTime = new Date(
-      departureDateTime.getTime() + this.estimatedDuration * 60 * 1000,
-    );
-
-    return `${dropoffDateTime.getHours().toString().padStart(2, '0')}:${dropoffDateTime.getMinutes().toString().padStart(2, '0')}`;
-  }
-
-  calculateRefundAmount() {
-    if (!this.isPaid) return 0;
-
-    const now = new Date();
-    const departureDateTime = this.getDepartureDateTime();
-    const hoursUntilDeparture = (departureDateTime - now) / (1000 * 60 * 60);
-
-    // Refund policy
-    if (hoursUntilDeparture > 24) {
-      return this.totalPrice; // 100% refund
-    }
-    if (hoursUntilDeparture > 6) {
-      return this.totalPrice * 0.75; // 75% refund
-    }
-    if (hoursUntilDeparture > 1) {
-      return this.totalPrice * 0.5; // 50% refund
-    }
-    return 0; // No refund within 1 hour
-  }
-
-  // Serialization
+  /**
+   * Convert to JSON
+   */
   toJSON() {
     return {
-      bookingId: this.bookingId,
+      id: this.id,
       rideId: this.rideId,
       passengerId: this.passengerId,
       driverId: this.driverId,
-
-      // Booking Details
-      numberOfSeats: this.numberOfSeats,
-      pickupPoint: this.pickupPoint,
-      dropoffPoint: this.dropoffPoint,
-      confirmationCode: this.confirmationCode,
-
-      // Pricing
-      pricePerSeat: this.pricePerSeat,
-      totalPrice: this.totalPrice,
-      currency: this.currency,
-      paymentMethod: this.paymentMethod,
-      paymentStatus: this.paymentStatus,
-
-      // Status
+      pickupLocation: this.pickupLocation,
+      dropoffLocation: this.dropoffLocation,
+      seats: this.seats,
       status: this.status,
-      isPending: this.isPending,
-      isConfirmed: this.isConfirmed,
-      isCancelled: this.isCancelled,
-      isCompleted: this.isCompleted,
-      isActive: this.isActive,
-      isPaid: this.isPaid,
-      isExpired: this.isExpired,
-      canBeCancelled: this.canBeCancelled,
-      cancellationReason: this.cancellationReason,
-      cancelledBy: this.cancelledBy,
-
-      // Passenger Information
-      passengerName: this.passengerName,
-      passengerPhone: this.passengerPhone,
-      passengerType: this.passengerType,
-      passengerRating: this.passengerRating,
-
-      // Driver & Vehicle Information
-      driverName: this.driverName,
-      driverPhone: this.driverPhone,
-      vehicleInfo: this.vehicleInfo,
-
-      // Schedule & Route
-      departureDate: this.departureDate.toISOString(),
-      departureTime: this.departureTime,
-      departureDateTime: this.getDepartureDateTime().toISOString(),
-      estimatedPickupTime: this.getEstimatedPickupTime(),
-      estimatedDropoffTime: this.getEstimatedDropoffTime(),
-      startLocation: this.startLocation,
-      endLocation: this.endLocation,
-      estimatedDistance: this.estimatedDistance,
-      estimatedDuration: this.estimatedDuration,
-      timeUntilDeparture: this.timeUntilDeparture,
-
-      // Tracking
-      tripProgress: this.tripProgress,
-      passengerCheckedIn: this.passengerCheckedIn,
-      checkedInAt: this.checkedInAt ? this.checkedInAt.toISOString() : null,
-      passengerPickedUp: this.passengerPickedUp,
-      pickedUpAt: this.pickedUpAt ? this.pickedUpAt.toISOString() : null,
-      passengerDroppedOff: this.passengerDroppedOff,
-      droppedOffAt: this.droppedOffAt ? this.droppedOffAt.toISOString() : null,
-
-      // Communication
-      messageThreadId: this.messageThreadId,
-      unreadMessages: this.unreadMessages,
-      lastMessageAt: this.lastMessageAt ? this.lastMessageAt.toISOString() : null,
-
-      // Ratings
-      canBeRated: this.canBeRated,
-      driverRating: this.driverRating,
-      vehicleRating: this.vehicleRating,
-      experienceRating: this.experienceRating,
-      ratingComments: this.ratingComments,
-      ratedAt: this.ratedAt ? this.ratedAt.toISOString() : null,
-
-      // Notifications
-      reminderSent: this.reminderSent,
-      reminderSentAt: this.reminderSentAt ? this.reminderSentAt.toISOString() : null,
-      arrivalNotificationSent: this.arrivalNotificationSent,
-
-      // Compliance
-      termsAccepted: this.termsAccepted,
-      insuranceAcknowledged: this.insuranceAcknowledged,
-
-      // Metadata
-      bookingSource: this.bookingSource,
-      notes: this.notes,
-
-      // Timestamps
-      createdAt: this.createdAt.toISOString(),
-      updatedAt: this.updatedAt.toISOString(),
-      confirmedAt: this.confirmedAt ? this.confirmedAt.toISOString() : null,
-      cancelledAt: this.cancelledAt ? this.cancelledAt.toISOString() : null,
-      completedAt: this.completedAt ? this.completedAt.toISOString() : null,
-      expiresAt: this.expiresAt ? this.expiresAt.toISOString() : null,
+      paymentStatus: this.paymentStatus,
+      paymentMethod: this.paymentMethod,
+      fare: this.fare,
+      totalAmount: this.totalAmount,
+      bookingCode: this.bookingCode,
+      verificationCode: this.verificationCode,
+      scheduledPickupTime: this.scheduledPickupTime,
+      createdAt: this.createdAt,
+      updatedAt: this.updatedAt,
     };
   }
 
-  // Factory method
-  static fromDatabase(data) {
-    return new Booking({
-      ...data,
-      departureDate: new Date(data.departureDate),
-      createdAt: new Date(data.createdAt),
-      updatedAt: new Date(data.updatedAt),
-      confirmedAt: data.confirmedAt ? new Date(data.confirmedAt) : null,
-      cancelledAt: data.cancelledAt ? new Date(data.cancelledAt) : null,
-      completedAt: data.completedAt ? new Date(data.completedAt) : null,
-      expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
-      checkedInAt: data.checkedInAt ? new Date(data.checkedInAt) : null,
-      pickedUpAt: data.pickedUpAt ? new Date(data.pickedUpAt) : null,
-      droppedOffAt: data.droppedOffAt ? new Date(data.droppedOffAt) : null,
-      lastMessageAt: data.lastMessageAt ? new Date(data.lastMessageAt) : null,
-      ratedAt: data.ratedAt ? new Date(data.ratedAt) : null,
-      reminderSentAt: data.reminderSentAt ? new Date(data.reminderSentAt) : null,
-      emergencyTriggeredAt: data.emergencyTriggeredAt ? new Date(data.emergencyTriggeredAt) : null,
-      termsAcceptedAt: data.termsAcceptedAt ? new Date(data.termsAcceptedAt) : null,
-    });
+  /**
+   * Create from database record
+   */
+  static fromDatabase(record) {
+    return new Booking(record);
+  }
+
+  /**
+   * Check if payment is pending
+   */
+  isPaymentPending() {
+    return (
+      this.paymentStatus === PaymentStatus.PENDING ||
+      this.paymentStatus === PaymentStatus.CASH_PENDING
+    );
+  }
+
+  /**
+   * Get status display text
+   */
+  getStatusDisplay() {
+    const statusMap = {
+      [BookingStatus.PENDING]: 'Awaiting Confirmation',
+      [BookingStatus.CONFIRMED]: 'Confirmed',
+      [BookingStatus.IN_PROGRESS]: 'Ride in Progress',
+      [BookingStatus.COMPLETED]: 'Completed',
+      [BookingStatus.CANCELLED]: 'Cancelled',
+      [BookingStatus.NO_SHOW]: 'No Show',
+    };
+
+    return statusMap[this.status] || this.status;
+  }
+
+  /**
+   * Get payment status display text
+   */
+  getPaymentStatusDisplay() {
+    const statusMap = {
+      [PaymentStatus.PENDING]: 'Payment Pending',
+      [PaymentStatus.CASH_RECEIVED]: 'Cash Received',
+      [PaymentStatus.CASH_PENDING]: 'Pay Driver in Cash',
+      [PaymentStatus.DISPUTED]: 'Payment Disputed',
+      [PaymentStatus.WAIVED]: 'Free Ride',
+    };
+
+    return statusMap[this.paymentStatus] || this.paymentStatus;
   }
 }
 
-module.exports = Booking;
+// Export the class and enums
+module.exports = {
+  Booking,
+  BookingStatus,
+  PaymentStatus,
+  PaymentMethod,
+};
