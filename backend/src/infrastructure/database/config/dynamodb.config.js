@@ -1,12 +1,11 @@
 /**
  * DynamoDB Client Configuration
  * University of Ilorin Carpooling Platform
- * 
  * Configures DynamoDB client for both local development and AWS environments
  */
 
-const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient } = require('@aws-sdk/lib-dynamodb');
+const { DynamoDBClient, DescribeTableCommand } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBDocumentClient, BatchWriteCommand } = require('@aws-sdk/lib-dynamodb');
 
 /**
  * Environment configuration
@@ -14,12 +13,13 @@ const { DynamoDBDocumentClient } = require('@aws-sdk/lib-dynamodb');
 const config = {
   region: process.env.AWS_REGION || 'eu-west-1',
   endpoint: process.env.DYNAMODB_ENDPOINT || undefined, // For local DynamoDB
-  credentials: process.env.NODE_ENV === 'development' && process.env.DYNAMODB_ENDPOINT
-    ? {
-        accessKeyId: 'dummy',
-        secretAccessKey: 'dummy',
-      }
-    : undefined,
+  credentials:
+    process.env.NODE_ENV === 'development' && process.env.DYNAMODB_ENDPOINT
+      ? {
+          accessKeyId: 'dummy',
+          secretAccessKey: 'dummy',
+        }
+      : undefined,
 };
 
 /**
@@ -57,12 +57,12 @@ const docClient = DynamoDBDocumentClient.from(dynamoDBClient, translateConfig);
 const getTableName = () => {
   const env = process.env.NODE_ENV || 'development';
   const baseTableName = process.env.DYNAMODB_TABLE || 'carpool-main';
-  
+
   // For development, use the table name as-is or append -dev
   if (env === 'development') {
     return baseTableName.includes('-dev') ? baseTableName : `${baseTableName}-dev`;
   }
-  
+
   // For other environments, use the exact table name from env
   return baseTableName;
 };
@@ -120,7 +120,6 @@ const handleDynamoDBError = (error, operation) => {
  */
 const healthCheck = async () => {
   try {
-    const { DescribeTableCommand } = require('@aws-sdk/client-dynamodb');
     const command = new DescribeTableCommand({ TableName: getTableName() });
     await dynamoDBClient.send(command);
     return { healthy: true, table: getTableName() };
@@ -134,44 +133,57 @@ const healthCheck = async () => {
  * Batch write helper with automatic chunking
  */
 const batchWriteWithRetry = async (items, maxRetries = 3) => {
-  const { BatchWriteCommand } = require('@aws-sdk/lib-dynamodb');
   const BATCH_SIZE = 25; // DynamoDB limit
-  
-  const chunks = [];
-  for (let i = 0; i < items.length; i += BATCH_SIZE) {
-    chunks.push(items.slice(i, i + BATCH_SIZE));
-  }
 
-  for (const chunk of chunks) {
+  // Create chunks using array methods
+  const chunks = Array.from({ length: Math.ceil(items.length / BATCH_SIZE) }, (_, i) =>
+    items.slice(i * BATCH_SIZE, (i + 1) * BATCH_SIZE),
+  );
+
+  const processChunk = async (chunk) => {
     let retries = 0;
     let unprocessedItems = chunk;
 
-    while (unprocessedItems.length > 0 && retries < maxRetries) {
+    const processWithRetry = async () => {
+      if (unprocessedItems.length === 0 || retries >= maxRetries) {
+        return;
+      }
+
       const params = {
         RequestItems: {
-          [getTableName()]: unprocessedItems.map(item => ({
-            PutRequest: { Item: item }
-          }))
-        }
+          [getTableName()]: unprocessedItems.map((item) => ({
+            PutRequest: { Item: item },
+          })),
+        },
       };
 
       const result = await docClient.send(new BatchWriteCommand(params));
-      
-      unprocessedItems = result.UnprocessedItems?.[getTableName()]?.map(
-        req => req.PutRequest.Item
-      ) || [];
+
+      unprocessedItems =
+        result.UnprocessedItems?.[getTableName()]?.map((req) => req.PutRequest.Item) || [];
 
       if (unprocessedItems.length > 0) {
-        retries++;
+        retries += 1;
         // Exponential backoff
-        await new Promise(resolve => setTimeout(resolve, Math.pow(2, retries) * 100));
+        const delay = 2 ** retries * 100;
+        await new Promise((resolve) => {
+          setTimeout(resolve, delay);
+        });
+        processWithRetry();
       }
-    }
+    };
+
+    await processWithRetry();
 
     if (unprocessedItems.length > 0) {
-      throw new Error(`Failed to process ${unprocessedItems.length} items after ${maxRetries} retries`);
+      throw new Error(
+        `Failed to process ${unprocessedItems.length} items after ${maxRetries} retries`,
+      );
     }
-  }
+  };
+
+  // Process all chunks in parallel
+  await Promise.all(chunks.map(processChunk));
 };
 
 /**
@@ -181,18 +193,18 @@ module.exports = {
   // Clients
   dynamoDBClient,
   docClient,
-  
+
   // Configuration
   getTableName,
   GSI,
   commonParams,
-  
+
   // Utilities
   buildQueryParams,
   handleDynamoDBError,
   healthCheck,
   batchWriteWithRetry,
-  
+
   // Constants
   TABLE_NAME: getTableName(),
   MAX_BATCH_SIZE: 25,

@@ -1,27 +1,22 @@
 /**
  * BookingRepository
  * University of Ilorin Carpooling Platform
- * 
+ *
  * Handles all database operations for bookings
  * Phase 1: Offline payment (cash) support
  * Implements single-table design with DynamoDB
  */
 
-const { 
-  PutCommand, 
-  GetCommand, 
-  UpdateCommand, 
+const {
+  PutCommand,
+  GetCommand,
+  UpdateCommand,
   DeleteCommand,
   QueryCommand,
   TransactWriteCommand,
 } = require('@aws-sdk/lib-dynamodb');
 
-const { 
-  docClient, 
-  getTableName, 
-  GSI, 
-  handleDynamoDBError 
-} = require('../config/dynamodb.config');
+const { docClient, getTableName, GSI, handleDynamoDBError } = require('../config/dynamodb.config');
 
 class BookingRepository {
   constructor() {
@@ -41,7 +36,7 @@ class BookingRepository {
   /**
    * Generate GSI keys for indexing
    */
-  _generateGSIKeys(userId, rideId, status, departureDate) {
+  _generateGSIKeys(userId, rideId, status, departureDate, bookingId) {
     return {
       GSI1PK: `USER#${userId}`, // For querying user's bookings
       GSI1SK: `BOOKING#${departureDate}`,
@@ -68,7 +63,7 @@ class BookingRepository {
     const month = (date.getMonth() + 1).toString().padStart(2, '0');
     const day = date.getDate().toString().padStart(2, '0');
     const random = Math.floor(1000 + Math.random() * 9000);
-    
+
     return `UIL-${year}${month}${day}-${random}`;
   }
 
@@ -94,7 +89,7 @@ class BookingRepository {
       const verificationCode = this._generateVerificationCode();
       const bookingCode = this._generateBookingCode();
       const status = 'pending';
-      
+
       const keys = this._generateKeys(bookingId);
       const gsiKeys = this._generateGSIKeys(userId, rideId, status, rideDate);
 
@@ -110,20 +105,20 @@ class BookingRepository {
         driverId,
         seats,
         pickupPointId,
-        
+
         // Payment information (Phase 1: Cash only)
         paymentMethod: 'cash',
         paymentStatus: 'cash_pending',
         totalAmount,
         amountPaid: 0,
-        
+
         // Verification
         verificationCode,
         codeVerified: false,
-        
+
         // Status tracking
         status, // pending, confirmed, in_progress, completed, cancelled, no_show
-        
+
         // Timestamps
         createdAt,
         updatedAt: createdAt,
@@ -185,7 +180,7 @@ class BookingRepository {
   async update(bookingId, updates) {
     try {
       const keys = this._generateKeys(bookingId);
-      
+
       // Build update expression dynamically
       const allowedUpdates = [
         'status',
@@ -272,29 +267,25 @@ class BookingRepository {
    * @returns {Promise<Object>} Updated booking
    */
   async startRide(bookingId, code) {
-    try {
-      const booking = await this.getById(bookingId);
-      
-      if (!booking) {
-        throw new Error('Booking not found');
-      }
+    const booking = await this.getById(bookingId);
 
-      if (booking.verificationCode !== code) {
-        throw new Error('Invalid verification code');
-      }
-
-      if (booking.status !== 'confirmed') {
-        throw new Error(`Cannot start ride. Booking status is ${booking.status}`);
-      }
-
-      return this.update(bookingId, {
-        status: 'in_progress',
-        codeVerified: true,
-        startedAt: new Date().toISOString(),
-      });
-    } catch (error) {
-      throw error;
+    if (!booking) {
+      throw new Error('Booking not found');
     }
+
+    if (booking.verificationCode !== code) {
+      throw new Error('Invalid verification code');
+    }
+
+    if (booking.status !== 'confirmed') {
+      throw new Error(`Cannot start ride. Booking status is ${booking.status}`);
+    }
+
+    return this.update(bookingId, {
+      status: 'in_progress',
+      codeVerified: true,
+      startedAt: new Date().toISOString(),
+    });
   }
 
   /**
@@ -305,28 +296,24 @@ class BookingRepository {
    * @returns {Promise<Object>} Updated booking
    */
   async completeRide(bookingId, amountReceived, notes = '') {
-    try {
-      const booking = await this.getById(bookingId);
-      
-      if (!booking) {
-        throw new Error('Booking not found');
-      }
+    const booking = await this.getById(bookingId);
 
-      if (booking.status !== 'in_progress') {
-        throw new Error(`Cannot complete ride. Booking status is ${booking.status}`);
-      }
-
-      return this.update(bookingId, {
-        status: 'completed',
-        paymentStatus: 'cash_received',
-        amountPaid: amountReceived,
-        cashReceivedAt: new Date().toISOString(),
-        completedAt: new Date().toISOString(),
-        driverNotes: notes,
-      });
-    } catch (error) {
-      throw error;
+    if (!booking) {
+      throw new Error('Booking not found');
     }
+
+    if (booking.status !== 'in_progress') {
+      throw new Error(`Cannot complete ride. Booking status is ${booking.status}`);
+    }
+
+    return this.update(bookingId, {
+      status: 'completed',
+      paymentStatus: 'cash_received',
+      amountPaid: amountReceived,
+      cashReceivedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+      driverNotes: notes,
+    });
   }
 
   /**
@@ -337,26 +324,22 @@ class BookingRepository {
    * @returns {Promise<Object>} Updated booking
    */
   async cancel(bookingId, reason, cancelledBy) {
-    try {
-      const booking = await this.getById(bookingId);
-      
-      if (!booking) {
-        throw new Error('Booking not found');
-      }
+    const booking = await this.getById(bookingId);
 
-      if (['completed', 'cancelled'].includes(booking.status)) {
-        throw new Error(`Cannot cancel booking with status ${booking.status}`);
-      }
-
-      return this.update(bookingId, {
-        status: 'cancelled',
-        cancellationReason: reason,
-        cancelledBy,
-        cancelledAt: new Date().toISOString(),
-      });
-    } catch (error) {
-      throw error;
+    if (!booking) {
+      throw new Error('Booking not found');
     }
+
+    if (['completed', 'cancelled'].includes(booking.status)) {
+      throw new Error(`Cannot cancel booking with status ${booking.status}`);
+    }
+
+    return this.update(bookingId, {
+      status: 'cancelled',
+      cancellationReason: reason,
+      cancelledBy,
+      cancelledAt: new Date().toISOString(),
+    });
   }
 
   /**
@@ -600,7 +583,7 @@ class BookingRepository {
   async createWithTransaction(bookingData, rideDate) {
     try {
       const booking = await this.create(bookingData);
-      
+
       // Create transaction to update both booking and ride
       const transactItems = [
         {
@@ -617,7 +600,8 @@ class BookingRepository {
               PK: `RIDE#${rideDate}`,
               SK: `RIDE#${bookingData.rideId}`,
             },
-            UpdateExpression: 'SET availableSeats = availableSeats - :seats, bookedSeats = bookedSeats + :seats, bookingCount = if_not_exists(bookingCount, :zero) + :one',
+            UpdateExpression:
+              'SET availableSeats = availableSeats - :seats, bookedSeats = bookedSeats + :seats, bookingCount = if_not_exists(bookingCount, :zero) + :one',
             ExpressionAttributeValues: {
               ':seats': bookingData.seats,
               ':zero': 0,

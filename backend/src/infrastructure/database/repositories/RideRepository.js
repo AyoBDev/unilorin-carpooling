@@ -1,26 +1,21 @@
 /**
  * RideRepository
  * University of Ilorin Carpooling Platform
- * 
+ *
  * Handles all database operations for ride offers
  * Implements single-table design with DynamoDB
  */
 
-const { 
-  PutCommand, 
-  GetCommand, 
-  UpdateCommand, 
+const {
+  PutCommand,
+  GetCommand,
+  UpdateCommand,
   DeleteCommand,
   QueryCommand,
   BatchGetCommand,
 } = require('@aws-sdk/lib-dynamodb');
 
-const { 
-  docClient, 
-  getTableName, 
-  GSI, 
-  handleDynamoDBError 
-} = require('../config/dynamodb.config');
+const { docClient, getTableName, GSI, handleDynamoDBError } = require('../config/dynamodb.config');
 
 class RideRepository {
   constructor() {
@@ -159,7 +154,7 @@ class RideRepository {
   async update(rideId, date, updates) {
     try {
       const keys = this._generateKeys(rideId, date);
-      
+
       // Build update expression dynamically
       const allowedUpdates = [
         'availableSeats',
@@ -200,7 +195,7 @@ class RideRepository {
             ride.driverId,
             ride.departureDate,
             ride.departureTime,
-            updates.status
+            updates.status,
           );
           Object.entries(gsiKeys).forEach(([key, value]) => {
             updateExpression.push(`#${key} = :${key}`);
@@ -367,13 +362,7 @@ class RideRepository {
    */
   async searchAvailableRides(criteria) {
     try {
-      const {
-        date,
-        minSeats = 1,
-        maxPrice = null,
-        status = 'active',
-        limit = 50,
-      } = criteria;
+      const { date, minSeats = 1, maxPrice = null, status = 'active', limit = 50 } = criteria;
 
       const params = {
         TableName: this.tableName,
@@ -417,7 +406,8 @@ class RideRepository {
       const params = {
         TableName: this.tableName,
         Key: keys,
-        UpdateExpression: 'SET availableSeats = availableSeats + :change, bookedSeats = bookedSeats - :change, updatedAt = :updatedAt',
+        UpdateExpression:
+          'SET availableSeats = availableSeats + :change, bookedSeats = bookedSeats - :change, updatedAt = :updatedAt',
         ExpressionAttributeValues: {
           ':change': seatsChange,
           ':updatedAt': new Date().toISOString(),
@@ -450,7 +440,8 @@ class RideRepository {
       const params = {
         TableName: this.tableName,
         Key: keys,
-        UpdateExpression: 'SET bookingCount = if_not_exists(bookingCount, :zero) + :inc, updatedAt = :updatedAt',
+        UpdateExpression:
+          'SET bookingCount = if_not_exists(bookingCount, :zero) + :inc, updatedAt = :updatedAt',
         ExpressionAttributeValues: {
           ':inc': 1,
           ':zero': 0,

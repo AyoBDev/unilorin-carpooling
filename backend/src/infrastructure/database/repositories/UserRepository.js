@@ -1,27 +1,21 @@
 /**
  * UserRepository
  * University of Ilorin Carpooling Platform
- * 
+ *
  * Handles all database operations for users (students, staff, drivers)
  * Supports authentication, profile management, and driver verification
  * Implements single-table design with DynamoDB
  */
 
-const { 
-  PutCommand, 
-  GetCommand, 
-  UpdateCommand, 
-  DeleteCommand,
+const {
+  PutCommand,
+  GetCommand,
+  UpdateCommand,
   QueryCommand,
   BatchGetCommand,
 } = require('@aws-sdk/lib-dynamodb');
 
-const { 
-  docClient, 
-  getTableName, 
-  GSI, 
-  handleDynamoDBError 
-} = require('../config/dynamodb.config');
+const { docClient, getTableName, GSI, handleDynamoDBError } = require('../config/dynamodb.config');
 
 class UserRepository {
   constructor() {
@@ -98,7 +92,13 @@ class UserRepository {
       const institutionIdType = role === 'student' ? 'MATRIC' : 'STAFF';
 
       const keys = this._generateKeys(userId);
-      const gsiKeys = this._generateGSIKeys(email, role, institutionId, institutionIdType, 'active');
+      const gsiKeys = this._generateGSIKeys(
+        email,
+        role,
+        institutionId,
+        institutionIdType,
+        'active',
+      );
 
       const item = {
         ...keys,
@@ -107,13 +107,13 @@ class UserRepository {
         userId,
         email: email.toLowerCase(),
         passwordHash,
-        
+
         // Personal information
         firstName,
         lastName,
         phone,
         profileImage,
-        
+
         // Institution details
         role,
         matricNumber,
@@ -122,28 +122,28 @@ class UserRepository {
         faculty,
         level, // For students
         designation, // For staff
-        
+
         // Driver information
         isDriver,
         driverVerified: false,
         licenseNumber: null,
         licenseExpiry: null,
         documents: [],
-        
+
         // Vehicle information (if driver)
         vehicles: [],
-        
+
         // Emergency contacts
         emergencyContacts: [],
-        
+
         // Verification
         emailVerified: false,
         emailVerificationToken: null,
         phoneVerified: false,
-        
+
         // Status
         status: 'active', // active, suspended, inactive, deleted
-        
+
         // Statistics
         totalRidesAsDriver: 0,
         totalRidesAsPassenger: 0,
@@ -151,13 +151,13 @@ class UserRepository {
         completedRides: 0,
         cancelledRides: 0,
         noShows: 0,
-        
+
         // Ratings
         averageRating: 0,
         totalRatings: 0,
         ratingsAsDriver: [],
         ratingsAsPassenger: [],
-        
+
         // Preferences
         preferences: {
           smokingAllowed: false,
@@ -166,7 +166,7 @@ class UserRepository {
           conversationLevel: 'moderate',
           acPreference: true,
         },
-        
+
         // Timestamps
         createdAt,
         updatedAt: createdAt,
@@ -180,9 +180,10 @@ class UserRepository {
       };
 
       await docClient.send(new PutCommand(params));
-      
+
       // Remove sensitive data before returning
-      const { passwordHash: _, ...userWithoutPassword } = item;
+      const userWithoutPassword = { ...item };
+      delete userWithoutPassword.passwordHash;
       return userWithoutPassword;
     } catch (error) {
       if (error.name === 'ConditionalCheckFailedException') {
@@ -208,14 +209,15 @@ class UserRepository {
       };
 
       const result = await docClient.send(new GetCommand(params));
-      
+
       if (!result.Item) {
         return null;
       }
 
       // Remove password hash unless explicitly requested
       if (!includePassword) {
-        const { passwordHash, ...userWithoutPassword } = result.Item;
+        const userWithoutPassword = { ...result.Item };
+        delete userWithoutPassword.passwordHash;
         return userWithoutPassword;
       }
 
@@ -245,7 +247,7 @@ class UserRepository {
       };
 
       const result = await docClient.send(new QueryCommand(params));
-      
+
       if (!result.Items || result.Items.length === 0) {
         return null;
       }
@@ -254,7 +256,8 @@ class UserRepository {
 
       // Remove password hash unless explicitly requested
       if (!includePassword) {
-        const { passwordHash, ...userWithoutPassword } = user;
+        const userWithoutPassword = { ...user };
+        delete userWithoutPassword.passwordHash;
         return userWithoutPassword;
       }
 
@@ -283,13 +286,14 @@ class UserRepository {
       };
 
       const result = await docClient.send(new QueryCommand(params));
-      
+
       if (!result.Items || result.Items.length === 0) {
         return null;
       }
 
-      const { passwordHash, ...userWithoutPassword } = result.Items[0];
-      return userWithoutPassword;
+      const user = result.Items[0];
+      delete user.passwordHash;
+      return user;
     } catch (error) {
       return handleDynamoDBError(error, 'GetUserByMatricNumber');
     }
@@ -314,13 +318,14 @@ class UserRepository {
       };
 
       const result = await docClient.send(new QueryCommand(params));
-      
+
       if (!result.Items || result.Items.length === 0) {
         return null;
       }
 
-      const { passwordHash, ...userWithoutPassword } = result.Items[0];
-      return userWithoutPassword;
+      const user = result.Items[0];
+      delete user.passwordHash;
+      return user;
     } catch (error) {
       return handleDynamoDBError(error, 'GetUserByStaffId');
     }
@@ -335,7 +340,7 @@ class UserRepository {
   async update(userId, updates) {
     try {
       const keys = this._generateKeys(userId);
-      
+
       // Build update expression dynamically
       const allowedUpdates = [
         'firstName',
@@ -397,9 +402,10 @@ class UserRepository {
       };
 
       const result = await docClient.send(new UpdateCommand(params));
-      
-      const { passwordHash, ...userWithoutPassword } = result.Attributes;
-      return userWithoutPassword;
+
+      // Remove password hash from result
+      delete result.Attributes.passwordHash;
+      return result.Attributes;
     } catch (error) {
       if (error.name === 'ConditionalCheckFailedException') {
         throw new Error('User not found');
@@ -431,9 +437,10 @@ class UserRepository {
       };
 
       const result = await docClient.send(new UpdateCommand(params));
-      
-      const { passwordHash, ...userWithoutPassword } = result.Attributes;
-      return userWithoutPassword;
+
+      // Remove password hash from result
+      delete result.Attributes.passwordHash;
+      return result.Attributes;
     } catch (error) {
       if (error.name === 'ConditionalCheckFailedException') {
         throw new Error('User not found');
@@ -481,31 +488,27 @@ class UserRepository {
    * @returns {Promise<Object>} Updated user
    */
   async addEmergencyContact(userId, contact) {
-    try {
-      const user = await this.getById(userId);
-      
-      if (!user) {
-        throw new Error('User not found');
-      }
+    const user = await this.getById(userId);
 
-      const emergencyContacts = user.emergencyContacts || [];
-      
-      const newContact = {
-        id: `contact-${Date.now()}`,
-        name: contact.name,
-        relationship: contact.relationship,
-        phone: contact.phone,
-        email: contact.email || null,
-        isPrimary: emergencyContacts.length === 0, // First contact is primary
-        createdAt: new Date().toISOString(),
-      };
-
-      emergencyContacts.push(newContact);
-
-      return this.update(userId, { emergencyContacts });
-    } catch (error) {
-      throw error;
+    if (!user) {
+      throw new Error('User not found');
     }
+
+    const emergencyContacts = user.emergencyContacts || [];
+
+    const newContact = {
+      id: `contact-${Date.now()}`,
+      name: contact.name,
+      relationship: contact.relationship,
+      phone: contact.phone,
+      email: contact.email || null,
+      isPrimary: emergencyContacts.length === 0, // First contact is primary
+      createdAt: new Date().toISOString(),
+    };
+
+    emergencyContacts.push(newContact);
+
+    return this.update(userId, { emergencyContacts });
   }
 
   /**
@@ -515,21 +518,17 @@ class UserRepository {
    * @returns {Promise<Object>} Updated user
    */
   async removeEmergencyContact(userId, contactId) {
-    try {
-      const user = await this.getById(userId);
-      
-      if (!user) {
-        throw new Error('User not found');
-      }
+    const user = await this.getById(userId);
 
-      const emergencyContacts = (user.emergencyContacts || []).filter(
-        contact => contact.id !== contactId
-      );
-
-      return this.update(userId, { emergencyContacts });
-    } catch (error) {
-      throw error;
+    if (!user) {
+      throw new Error('User not found');
     }
+
+    const emergencyContacts = (user.emergencyContacts || []).filter(
+      (contact) => contact.id !== contactId,
+    );
+
+    return this.update(userId, { emergencyContacts });
   }
 
   /**
@@ -540,41 +539,37 @@ class UserRepository {
    * @returns {Promise<Object>} Updated user
    */
   async updateRating(userId, newRating, ratingType = 'driver') {
-    try {
-      const user = await this.getById(userId);
-      
-      if (!user) {
-        throw new Error('User not found');
-      }
+    const user = await this.getById(userId);
 
-      const totalRatings = user.totalRatings || 0;
-      const averageRating = user.averageRating || 0;
-
-      // Calculate new average
-      const newTotal = totalRatings + 1;
-      const newAverage = ((averageRating * totalRatings) + newRating) / newTotal;
-
-      // Update rating arrays
-      const ratingKey = ratingType === 'driver' ? 'ratingsAsDriver' : 'ratingsAsPassenger';
-      const ratings = user[ratingKey] || [];
-      ratings.push({
-        rating: newRating,
-        timestamp: new Date().toISOString(),
-      });
-
-      // Keep only last 50 ratings
-      if (ratings.length > 50) {
-        ratings.shift();
-      }
-
-      return this.update(userId, {
-        averageRating: Math.round(newAverage * 10) / 10, // Round to 1 decimal
-        totalRatings: newTotal,
-        [ratingKey]: ratings,
-      });
-    } catch (error) {
-      throw error;
+    if (!user) {
+      throw new Error('User not found');
     }
+
+    const totalRatings = user.totalRatings || 0;
+    const averageRating = user.averageRating || 0;
+
+    // Calculate new average
+    const newTotal = totalRatings + 1;
+    const newAverage = (averageRating * totalRatings + newRating) / newTotal;
+
+    // Update rating arrays
+    const ratingKey = ratingType === 'driver' ? 'ratingsAsDriver' : 'ratingsAsPassenger';
+    const ratings = user[ratingKey] || [];
+    ratings.push({
+      rating: newRating,
+      timestamp: new Date().toISOString(),
+    });
+
+    // Keep only last 50 ratings
+    if (ratings.length > 50) {
+      ratings.shift();
+    }
+
+    return this.update(userId, {
+      averageRating: Math.round(newAverage * 10) / 10, // Round to 1 decimal
+      totalRatings: newTotal,
+      [ratingKey]: ratings,
+    });
   }
 
   /**
@@ -604,9 +599,10 @@ class UserRepository {
       };
 
       const result = await docClient.send(new UpdateCommand(params));
-      
-      const { passwordHash, ...userWithoutPassword } = result.Attributes;
-      return userWithoutPassword;
+
+      // Remove password hash from result
+      delete result.Attributes.passwordHash;
+      return result.Attributes;
     } catch (error) {
       return handleDynamoDBError(error, 'IncrementRideCount');
     }
@@ -624,7 +620,8 @@ class UserRepository {
       const params = {
         TableName: this.tableName,
         Key: keys,
-        UpdateExpression: 'SET noShows = if_not_exists(noShows, :zero) + :inc, updatedAt = :updatedAt',
+        UpdateExpression:
+          'SET noShows = if_not_exists(noShows, :zero) + :inc, updatedAt = :updatedAt',
         ExpressionAttributeValues: {
           ':inc': 1,
           ':zero': 0,
@@ -634,9 +631,10 @@ class UserRepository {
       };
 
       const result = await docClient.send(new UpdateCommand(params));
-      
-      const { passwordHash, ...userWithoutPassword } = result.Attributes;
-      return userWithoutPassword;
+
+      // Remove password hash from result
+      delete result.Attributes.passwordHash;
+      return result.Attributes;
     } catch (error) {
       return handleDynamoDBError(error, 'IncrementNoShowCount');
     }
@@ -670,7 +668,7 @@ class UserRepository {
       const result = await docClient.send(new QueryCommand(params));
 
       // Remove password hashes
-      const items = (result.Items || []).map(({ passwordHash, ...user }) => user);
+      const items = (result.Items || []).map(({ passwordHash: _, ...user }) => user);
 
       return {
         items,
@@ -742,7 +740,7 @@ class UserRepository {
     };
 
     const result = await docClient.send(new QueryCommand(params));
-    return (result.Items || []).map(({ passwordHash, ...user }) => user);
+    return (result.Items || []).map(({ passwordHash: _, ...user }) => user);
   }
 
   /**
@@ -773,7 +771,7 @@ class UserRepository {
       const result = await docClient.send(new QueryCommand(params));
 
       // Remove password hashes
-      const items = (result.Items || []).map(({ passwordHash, ...user }) => user);
+      const items = (result.Items || []).map(({ passwordHash: _, ...user }) => user);
 
       return {
         items,
@@ -844,14 +842,15 @@ class UserRepository {
   async searchUsers(searchTerm, options = {}) {
     try {
       const { limit = 50, role = null } = options;
-      
+
       const lowerSearchTerm = searchTerm.toLowerCase();
 
       // Note: This is a scan operation - not ideal for production at scale
       // Consider implementing Elasticsearch or similar for better search
       const params = {
         TableName: this.tableName,
-        FilterExpression: 'contains(#firstName, :term) OR contains(#lastName, :term) OR contains(#email, :term)',
+        FilterExpression:
+          'contains(#firstName, :term) OR contains(#lastName, :term) OR contains(#email, :term)',
         ExpressionAttributeNames: {
           '#firstName': 'firstName',
           '#lastName': 'lastName',
@@ -876,7 +875,7 @@ class UserRepository {
       const result = await docClient.send(new QueryCommand(params));
 
       // Remove password hashes
-      const items = (result.Items || []).map(({ passwordHash, ...user }) => user);
+      const items = (result.Items || []).map(({ passwordHash: _, ...user }) => user);
 
       return items;
     } catch (error) {
@@ -891,7 +890,7 @@ class UserRepository {
    */
   async batchGet(userIds) {
     try {
-      const keys = userIds.map(userId => this._generateKeys(userId));
+      const keys = userIds.map((userId) => this._generateKeys(userId));
 
       const params = {
         RequestItems: {
@@ -902,10 +901,10 @@ class UserRepository {
       };
 
       const result = await docClient.send(new BatchGetCommand(params));
-      
+
       // Remove password hashes
       const items = (result.Responses[this.tableName] || []).map(
-        ({ passwordHash, ...user }) => user
+        ({ passwordHash: _, ...user }) => user,
       );
 
       return items;
@@ -921,17 +920,21 @@ class UserRepository {
    */
   checkProfileCompleteness(user) {
     const requiredFields = ['firstName', 'lastName', 'phone', 'email'];
-    const missingFields = requiredFields.filter(field => !user[field]);
+    const missingFields = requiredFields.filter((field) => !user[field]);
 
-    const driverFields = user.isDriver
-      ? ['licenseNumber', 'licenseExpiry', 'vehicles']
-      : [];
-    const missingDriverFields = driverFields.filter(field => !user[field] || (Array.isArray(user[field]) && user[field].length === 0));
+    const driverFields = user.isDriver ? ['licenseNumber', 'licenseExpiry', 'vehicles'] : [];
+    const missingDriverFields = driverFields.filter(
+      (field) => !user[field] || (Array.isArray(user[field]) && user[field].length === 0),
+    );
 
     const isComplete = missingFields.length === 0 && missingDriverFields.length === 0;
     const completeness = Math.round(
-      ((requiredFields.length + driverFields.length - missingFields.length - missingDriverFields.length) /
-        (requiredFields.length + driverFields.length)) * 100
+      ((requiredFields.length +
+        driverFields.length -
+        missingFields.length -
+        missingDriverFields.length) /
+        (requiredFields.length + driverFields.length)) *
+        100,
     );
 
     return {

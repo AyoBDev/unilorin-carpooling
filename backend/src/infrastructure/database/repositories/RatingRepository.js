@@ -6,9 +6,7 @@
  */
 
 const { nanoid } = require('nanoid');
-const dayjs = require('dayjs');
-const logger = require('@shared/utils/logger');
-const { AppError } = require('@shared/errors/AppError');
+const logger = require('../../../shared/utils/logger');
 const BaseRepository = require('./BaseRepository');
 
 class RatingRepository extends BaseRepository {
