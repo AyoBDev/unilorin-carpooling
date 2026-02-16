@@ -10,14 +10,14 @@
  * @module controllers
  */
 
-const AuthController = require('./auth.controller');
-const UserController = require('./user.controller');
-const RideController = require('./ride.controller');
-const BookingController = require('./booking.controller');
-const RatingController = require('./rating.controller');
-const NotificationController = require('./notification.controller');
-const SafetyController = require('./safety.controller');
-const ReportController = require('./report.controller');
+const AuthController = require('./AuthController');
+const UserController = require('./UserController');
+const RideController = require('./RideController');
+const BookingController = require('./BookingController');
+const RatingController = require('./RatingController');
+const NotificationController = require('./NotificationController');
+const SafetyController = require('./SafetyController');
+const ReportController = require('./ReportController');
 
 module.exports = {
   AuthController,

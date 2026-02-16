@@ -10,7 +10,8 @@
  *
  * Path: src/api/controllers/BookingController.js
  *
- * @module controllers/BookingController
+ * @module controllers/
+ *
  */
 
 const { BookingService } = require('../../core/services');

@@ -11,11 +11,7 @@
  */
 
 const { RideService, MatchingService } = require('../../core/services');
-const {
-  success,
-  created,
-  paginated,
-} = require('../../shared/utils/response');
+const { success, created, paginated } = require('../../shared/utils/response');
 const { logger } = require('../../shared/utils/logger');
 
 class RideController {
@@ -62,7 +58,7 @@ class RideController {
 
       return created(res, 'Ride offer created successfully', { ride });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -79,7 +75,7 @@ class RideController {
 
       return success(res, 'Ride details retrieved', { ride });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -98,7 +94,7 @@ class RideController {
 
       return success(res, 'Ride updated successfully', { ride });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -121,7 +117,7 @@ class RideController {
         affectedBookings: result.affectedBookings,
       });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -153,7 +149,8 @@ class RideController {
       const result = await this.rideService.searchRides({
         date,
         time,
-        from: fromLat && fromLng ? { lat: parseFloat(fromLat), lng: parseFloat(fromLng) } : undefined,
+        from:
+          fromLat && fromLng ? { lat: parseFloat(fromLat), lng: parseFloat(fromLng) } : undefined,
         to: toLat && toLng ? { lat: parseFloat(toLat), lng: parseFloat(toLng) } : undefined,
         fromAddress,
         toAddress,
@@ -167,7 +164,7 @@ class RideController {
 
       return paginated(res, 'Rides found', result.rides, result.pagination);
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -187,7 +184,7 @@ class RideController {
 
       return paginated(res, 'Available rides', result.rides, result.pagination);
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -208,7 +205,7 @@ class RideController {
 
       return paginated(res, 'Your rides', result.rides, result.pagination);
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -229,7 +226,7 @@ class RideController {
 
       return success(res, 'Ride started', { ride });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -251,7 +248,7 @@ class RideController {
         summary: result.summary,
       });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -270,7 +267,7 @@ class RideController {
 
       return created(res, 'Pickup point added', { pickupPoint });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -287,7 +284,7 @@ class RideController {
 
       return success(res, 'Pickup point removed');
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -305,7 +302,7 @@ class RideController {
 
       return success(res, 'Pickup points reordered', { pickupPoints });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -321,7 +318,7 @@ class RideController {
 
       return success(res, 'Pickup points retrieved', { pickupPoints });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -341,7 +338,7 @@ class RideController {
 
       return created(res, 'Recurring ride schedule created', { schedule: result });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -357,7 +354,7 @@ class RideController {
 
       return success(res, 'Recurring ride schedules', { schedules });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -374,7 +371,7 @@ class RideController {
 
       return success(res, 'Recurring ride schedule cancelled');
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -394,7 +391,7 @@ class RideController {
 
       return success(res, 'Ride bookings retrieved', { bookings });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -411,7 +408,7 @@ class RideController {
 
       return success(res, 'Passengers retrieved', { passengers });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -423,7 +420,7 @@ class RideController {
    */
   async getMatchingRides(req, res, next) {
     try {
-      const userId = req.user.userId;
+      const { userId } = req.user;
       const { fromLat, fromLng, toLat, toLng, date, time, seats = 1 } = req.query;
 
       const matches = await this.matchingService.findMatchingRides(userId, {
@@ -436,7 +433,7 @@ class RideController {
 
       return success(res, 'Matching rides found', { matches });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -446,13 +443,13 @@ class RideController {
    */
   async getSuggestions(req, res, next) {
     try {
-      const userId = req.user.userId;
+      const { userId } = req.user;
 
       const suggestions = await this.matchingService.getSuggestions(userId);
 
       return success(res, 'Ride suggestions', { suggestions });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -468,7 +465,7 @@ class RideController {
 
       return success(res, 'Popular routes', { routes });
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 }
