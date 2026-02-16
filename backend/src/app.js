@@ -102,4 +102,40 @@ logger.info('Express application configured', {
   corsOrigins: process.env.CORS_ORIGINS || 'localhost',
 });
 
+// In app.js — add after DynamoDB connection setup
+
+const redisClient = require('./infrastructure/cache/RedisClient');
+
+// Connect Redis (non-blocking — app works without cache)
+(async () => {
+  try {
+    await redisClient.connect();
+    logger.info('Redis cache connected');
+  } catch (error) {
+    logger.warn('Redis cache unavailable — running without cache', {
+      error: error.message,
+    });
+  }
+})();
+
+// Add health check endpoint
+app.get('/api/v1/health', async (req, res) => {
+  const cacheHealth = await redisClient.healthCheck();
+  res.json({
+    success: true,
+    data: {
+      status: 'ok',
+      uptime: process.uptime(),
+      cache: cacheHealth,
+      timestamp: new Date().toISOString(),
+    },
+  });
+});
+
+// Graceful shutdown — add to existing shutdown handler
+process.on('SIGTERM', async () => {
+  await redisClient.disconnect();
+  process.exit(0);
+});
+
 module.exports = app;
