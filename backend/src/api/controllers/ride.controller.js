@@ -1,494 +1,476 @@
-// /**
-//  * Ride Controller
-//  * Path: src/api/controllers/ride.controller.js
-//  *
-//  * Handles all ride-related HTTP requests
-//  */
+/**
+ * Ride Controller
+ * University of Ilorin Carpooling Platform
+ *
+ * Handles ride offer creation, updates, search, cancellation,
+ * pickup points, recurring rides, and ride lifecycle management.
+ *
+ * Path: src/api/controllers/RideController.js
+ *
+ * @module controllers/RideController
+ */
 
-// const RideService = require('@core/services/ride.service');
-// const { createResponse, createErrorResponse } = require('@shared/utils/response');
-// const { validateRide, validateRideSearch } = require('@api/validators/ride.validator');
-// const logger = require('@shared/utils/logger');
+const { RideService, MatchingService } = require('../../core/services');
+const {
+  success,
+  created,
+  paginated,
+} = require('../../shared/utils/response');
+const { logger } = require('../../shared/utils/logger');
 
-// class RideController {
-//   constructor() {
-//     this.rideService = new RideService();
-//   }
+class RideController {
+  constructor() {
+    this.rideService = RideService;
+    this.matchingService = MatchingService;
 
-//   /**
-//    * Create a new ride offer (Driver only)
-//    * POST /api/v1/rides
-//    */
-//   async createRide(req, res, next) {
-//     try {
-//       const driverId = req.user.id;
-//       const rideData = req.body;
+    this.createRide = this.createRide.bind(this);
+    this.getRide = this.getRide.bind(this);
+    this.updateRide = this.updateRide.bind(this);
+    this.cancelRide = this.cancelRide.bind(this);
+    this.searchRides = this.searchRides.bind(this);
+    this.getAvailableRides = this.getAvailableRides.bind(this);
+    this.getMyRides = this.getMyRides.bind(this);
+    this.startRide = this.startRide.bind(this);
+    this.completeRide = this.completeRide.bind(this);
+    this.addPickupPoint = this.addPickupPoint.bind(this);
+    this.removePickupPoint = this.removePickupPoint.bind(this);
+    this.reorderPickupPoints = this.reorderPickupPoints.bind(this);
+    this.getPickupPoints = this.getPickupPoints.bind(this);
+    this.createRecurringRide = this.createRecurringRide.bind(this);
+    this.getMyRecurringRides = this.getMyRecurringRides.bind(this);
+    this.cancelRecurringRide = this.cancelRecurringRide.bind(this);
+    this.getRideBookings = this.getRideBookings.bind(this);
+    this.getRidePassengers = this.getRidePassengers.bind(this);
+    this.getMatchingRides = this.getMatchingRides.bind(this);
+    this.getSuggestions = this.getSuggestions.bind(this);
+    this.getPopularRoutes = this.getPopularRoutes.bind(this);
+  }
 
-//       // Validate input
-//       const validation = validateRide(rideData);
-//       if (validation.error) {
-//         return res
-//           .status(400)
-//           .json(createErrorResponse('Validation failed', validation.error.details));
-//       }
+  // ─── RIDE CRUD ───────────────────────────────────────────────
 
-//       // Add driver information
-//       rideData.driverId = driverId;
+  /**
+   * Create a new ride offer
+   * POST /api/v1/rides
+   */
+  async createRide(req, res, next) {
+    try {
+      const driverId = req.user.userId;
 
-//       // Create ride
-//       const ride = await this.rideService.createRide(rideData);
+      const ride = await this.rideService.createRide(driverId, req.body);
 
-//       return res.status(201).json(
-//         createResponse('Ride created successfully', {
-//           ride,
-//           shareableLink: `/rides/${ride.id}`,
-//           message: `Your ride from ${ride.startLocation.area} to ${ride.endLocation.area} has been created`
-//         }),
-//       );
-//     } catch (error) {
-//       logger.error('Failed to create ride', { error, driverId });
-//       next(error);
-//     }
-//   }
+      logger.info('Ride created', { driverId, rideId: ride.rideId });
 
-//   /**
-//    * Search for available rides
-//    * GET /api/v1/rides/search
-//    */
-//   async searchRides(req, res, next) {
-//     try {
-//       const {
-//         date,
-//         from,
-//         to,
-//         fromLat,
-//         fromLng,
-//         toLat,
-//         toLng,
-//         minSeats = 1,
-//         maxPrice,
-//         startTime,
-//         endTime,
-//         page = 1,
-//         limit = 20,
-//       } = req.query;
+      return created(res, 'Ride offer created successfully', { ride });
+    } catch (error) {
+      next(error);
+    }
+  }
 
-//       // Validate search parameters
-//       const validation = validateRideSearch(req.query);
-//       if (validation.error) {
-//         return res
-//           .status(400)
-//           .json(createErrorResponse('Invalid search parameters', validation.error.details));
-//       }
+  /**
+   * Get ride details
+   * GET /api/v1/rides/:rideId
+   */
+  async getRide(req, res, next) {
+    try {
+      const { rideId } = req.params;
+      const userId = req.user?.userId; // Optional - may be unauthenticated
 
-//       // Build search criteria
-//       const searchCriteria = {
-//         date: date || new Date().toISOString().split('T')[0],
-//         startLocation: from ? { city: from } : (fromLat && fromLng ? { lat: parseFloat(fromLat), lng: parseFloat(fromLng) } : null),
-//         endLocation: to ? { city: to } : (toLat && toLng ? { lat: parseFloat(toLat), lng: parseFloat(toLng) } : null),
-//         minSeats: parseInt(minSeats),
-//         maxPrice: maxPrice ? parseFloat(maxPrice) : null,
-//         timeRange: startTime && endTime ? { start: startTime, end: endTime } : null
-//       };
+      const ride = await this.rideService.getRideById(rideId, userId);
 
-//       const rides = await this.rideService.searchRides(searchCriteria, {
-//         page: parseInt(page),
-//         limit: parseInt(limit)
-//       });
+      return success(res, 'Ride details retrieved', { ride });
+    } catch (error) {
+      next(error);
+    }
+  }
 
-//       // Enhance ride data with additional info
-//       const enhancedRides = await this.rideService.enhanceRidesWithDriverInfo(rides);
+  /**
+   * Update a ride offer
+   * PUT /api/v1/rides/:rideId
+   */
+  async updateRide(req, res, next) {
+    try {
+      const { rideId } = req.params;
+      const driverId = req.user.userId;
 
-//       return res.json(
-//         createResponse('Rides found', {
-//           rides: enhancedRides,
-//           count: enhancedRides.length,
-//           searchCriteria,
-//           pagination: {
-//             page: parseInt(page),
-//             limit: parseInt(limit)
-//           }
-//         })
-//       );
-//     } catch (error) {
-//       logger.error('Failed to search rides', { error });
-//       next(error);
-//     }
-//   }
+      const ride = await this.rideService.updateRide(rideId, driverId, req.body);
 
-//   /**
-//    * Get ride details
-//    * GET /api/v1/rides/:rideId
-//    */
-//   async getRideDetails(req, res, next) {
-//     try {
-//       const { rideId } = req.params;
-//       const includeDriver = req.query.includeDriver === 'true';
+      logger.info('Ride updated', { driverId, rideId });
 
-//       const ride = await this.rideService.getRideById(rideId, { includeDriver });
+      return success(res, 'Ride updated successfully', { ride });
+    } catch (error) {
+      next(error);
+    }
+  }
 
-//       if (!ride) {
-//         return res.status(404).json(createErrorResponse('Ride not found'));
-//       }
+  /**
+   * Cancel a ride offer
+   * POST /api/v1/rides/:rideId/cancel
+   */
+  async cancelRide(req, res, next) {
+    try {
+      const { rideId } = req.params;
+      const driverId = req.user.userId;
+      const { reason } = req.body || {};
 
-//       // Get booking count if user is authenticated
-//       let userBooking = null;
-//       if (req.user) {
-//         userBooking = await this.rideService.getUserBookingForRide(rideId, req.user.id);
-//       }
+      const result = await this.rideService.cancelRide(rideId, driverId, reason);
 
-//       return res.json(
-//         createResponse('Ride details', {
-//           ride,
-//           userBooking,
-//           canBook: ride.availableSeats > 0 && ride.status === 'active'
-//         }),
-//       );
-//     } catch (error) {
-//       next(error);
-//     }
-//   }
+      logger.info('Ride cancelled', { driverId, rideId, reason });
 
-//   /**
-//    * Get available rides
-//    * GET /api/v1/rides
-//    */
-//   async getAvailableRides(req, res, next) {
-//     try {
-//       const { date, route, sortBy = 'departureTime', page = 1, limit = 20 } = req.query;
+      return success(res, 'Ride cancelled successfully', {
+        ride: result.ride,
+        affectedBookings: result.affectedBookings,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 
-//       const filters = {
-//         date: date || new Date().toISOString().split('T')[0],
-//         route,
-//         status: 'active',
-//       };
+  // ─── SEARCH & DISCOVERY ──────────────────────────────────────
 
-//       const rides = await this.rideService.getAvailableRides(filters, {
-//         sortBy,
-//         page: parseInt(page),
-//         limit: parseInt(limit)
-//       });
+  /**
+   * Search for available rides
+   * GET /api/v1/rides/search
+   */
+  async searchRides(req, res, next) {
+    try {
+      const {
+        date,
+        time,
+        fromLat,
+        fromLng,
+        toLat,
+        toLng,
+        fromAddress,
+        toAddress,
+        seats = 1,
+        maxPrice,
+        page = 1,
+        limit = 20,
+        sortBy = 'departureTime',
+        sortOrder = 'asc',
+      } = req.query;
 
-//       return res.json(
-//         createResponse('Available rides', {
-//           rides,
-//           filters,
-//           pagination: {
-//             page: parseInt(page),
-//             limit: parseInt(limit),
-//             total: rides.length,
-//           },
-//         }),
-//       );
-//     } catch (error) {
-//       next(error);
-//     }
-//   }
+      const result = await this.rideService.searchRides({
+        date,
+        time,
+        from: fromLat && fromLng ? { lat: parseFloat(fromLat), lng: parseFloat(fromLng) } : undefined,
+        to: toLat && toLng ? { lat: parseFloat(toLat), lng: parseFloat(toLng) } : undefined,
+        fromAddress,
+        toAddress,
+        seats: parseInt(seats, 10),
+        maxPrice: maxPrice ? parseFloat(maxPrice) : undefined,
+        page: parseInt(page, 10),
+        limit: parseInt(limit, 10),
+        sortBy,
+        sortOrder,
+      });
 
-//   /**
-//    * Update ride (Driver only)
-//    * PUT /api/v1/rides/:rideId
-//    */
-//   async updateRide(req, res, next) {
-//     try {
-//       const { rideId } = req.params;
-//       const driverId = req.user.id;
-//       const updates = req.body;
+      return paginated(res, 'Rides found', result.rides, result.pagination);
+    } catch (error) {
+      next(error);
+    }
+  }
 
-//       // Validate updates
-//       if (updates.departureTime || updates.startLocation || updates.endLocation) {
-//         const validation = validateRide(updates);
-//         if (validation.error) {
-//           return res
-//             .status(400)
-//             .json(createErrorResponse('Invalid updates', validation.error.details));
-//         }
-//       }
+  /**
+   * Get available rides (general listing)
+   * GET /api/v1/rides
+   */
+  async getAvailableRides(req, res, next) {
+    try {
+      const { date, page = 1, limit = 20 } = req.query;
 
-//       const updatedRide = await this.rideService.updateRide(rideId, driverId, updates);
+      const result = await this.rideService.getAvailableRides({
+        date,
+        page: parseInt(page, 10),
+        limit: parseInt(limit, 10),
+      });
 
-//       return res.json(createResponse('Ride updated successfully', updatedRide));
-//     } catch (error) {
-//       next(error);
-//     }
-//   }
+      return paginated(res, 'Available rides', result.rides, result.pagination);
+    } catch (error) {
+      next(error);
+    }
+  }
 
-//   /**
-//    * Cancel ride (Driver only)
-//    * POST /api/v1/rides/:rideId/cancel
-//    */
-//   async cancelRide(req, res, next) {
-//     try {
-//       const { rideId } = req.params;
-//       const { reason } = req.body;
-//       const driverId = req.user.id;
+  /**
+   * Get driver's own rides
+   * GET /api/v1/rides/my-rides
+   */
+  async getMyRides(req, res, next) {
+    try {
+      const driverId = req.user.userId;
+      const { status, page = 1, limit = 20 } = req.query;
 
-//       if (!reason) {
-//         return res.status(400).json(createErrorResponse('Cancellation reason is required'));
-//       }
+      const result = await this.rideService.getDriverRides(driverId, {
+        status,
+        page: parseInt(page, 10),
+        limit: parseInt(limit, 10),
+      });
 
-//       const cancelledRide = await this.rideService.cancelRide(rideId, driverId, reason);
+      return paginated(res, 'Your rides', result.rides, result.pagination);
+    } catch (error) {
+      next(error);
+    }
+  }
 
-//       return res.json(
-//         createResponse('Ride cancelled successfully', {
-//           ride: cancelledRide,
-//           affectedBookings: cancelledRide.affectedBookings || 0,
-//           message: 'All passengers have been notified',
-//         }),
-//       );
-//     } catch (error) {
-//       next(error);
-//     }
-//   }
+  // ─── RIDE LIFECYCLE ──────────────────────────────────────────
 
-//   /**
-//    * Complete ride (Driver only)
-//    * POST /api/v1/rides/:rideId/complete
-//    */
-//   async completeRide(req, res, next) {
-//     try {
-//       const { rideId } = req.params;
-//       const driverId = req.user.id;
+  /**
+   * Start a ride (driver departs)
+   * POST /api/v1/rides/:rideId/start
+   */
+  async startRide(req, res, next) {
+    try {
+      const { rideId } = req.params;
+      const driverId = req.user.userId;
 
-//       const completedRide = await this.rideService.completeRide(rideId, driverId);
+      const ride = await this.rideService.startRide(rideId, driverId);
 
-//       // Get ride statistics
-//       const stats = await this.rideService.getRideStatistics(rideId);
+      logger.info('Ride started', { driverId, rideId });
 
-//       return res.json(
-//         createResponse('Ride completed successfully', {
-//           ride: completedRide,
-//           statistics: {
-//             totalPassengers: stats.totalPassengers,
-//             totalEarnings: stats.totalEarnings,
-//             completedBookings: stats.completedBookings,
-//             averageRating: stats.averageRating,
-//           },
-//         }),
-//       );
-//     } catch (error) {
-//       next(error);
-//     }
-//   }
+      return success(res, 'Ride started', { ride });
+    } catch (error) {
+      next(error);
+    }
+  }
 
-//   /**
-//    * Get driver's rides
-//    * GET /api/v1/rides/driver/my-rides
-//    */
-//   async getMyRides(req, res, next) {
-//     try {
-//       const driverId = req.user.id;
-//       const {
-//         status,
-//         startDate,
-//         endDate,
-//         sortBy = 'departureTime',
-//         order = 'desc',
-//         page = 1,
-//         limit = 20,
-//       } = req.query;
+  /**
+   * Complete a ride
+   * POST /api/v1/rides/:rideId/complete
+   */
+  async completeRide(req, res, next) {
+    try {
+      const { rideId } = req.params;
+      const driverId = req.user.userId;
 
-//       const filters = {
-//         status,
-//         startDate,
-//         endDate,
-//       };
+      const result = await this.rideService.completeRide(rideId, driverId);
 
-//       const rides = await this.rideService.getDriverRides(driverId, filters, {
-//         sortBy,
-//         order,
-//         page: parseInt(page),
-//         limit: parseInt(limit)
-//       });
+      logger.info('Ride completed', { driverId, rideId });
 
-//       // Get statistics
-//       const stats = await this.rideService.getDriverStatistics(driverId);
+      return success(res, 'Ride completed successfully', {
+        ride: result.ride,
+        summary: result.summary,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 
-//       return res.json(
-//         createResponse('Your rides', {
-//           rides,
-//           statistics: stats,
-//           pagination: {
-//             page: parseInt(page),
-//             limit: parseInt(limit),
-//             total: rides.length,
-//           },
-//         }),
-//       );
-//     } catch (error) {
-//       next(error);
-//     }
-//   }
+  // ─── PICKUP POINTS ──────────────────────────────────────────
 
-//   /**
-//    * Create recurring ride (Driver only)
-//    * POST /api/v1/rides/recurring
-//    */
-//   async createRecurringRide(req, res, next) {
-//     try {
-//       const driverId = req.user.id;
-//       const recurringData = req.body;
+  /**
+   * Add a pickup point to a ride
+   * POST /api/v1/rides/:rideId/pickup-points
+   */
+  async addPickupPoint(req, res, next) {
+    try {
+      const { rideId } = req.params;
+      const driverId = req.user.userId;
 
-//       // Validate recurring ride data
-//       if (!recurringData.days || recurringData.days.length === 0) {
-//         return res
-//           .status(400)
-//           .json(createErrorResponse('Please select at least one day for recurring ride'));
-//       }
+      const pickupPoint = await this.rideService.addPickupPoint(rideId, driverId, req.body);
 
-//       const recurringRides = await this.rideService.createRecurringRide(driverId, recurringData);
+      return created(res, 'Pickup point added', { pickupPoint });
+    } catch (error) {
+      next(error);
+    }
+  }
 
-//       return res.status(201).json(
-//         createResponse('Recurring rides created successfully', {
-//           rides: recurringRides,
-//           schedule: {
-//             days: recurringData.days,
-//             time: recurringData.departureTime,
-//             duration: recurringData.duration || '4 weeks'
-//           }
-//         })
-//       );
-//     } catch (error) {
-//       next(error);
-//     }
-//   }
+  /**
+   * Remove a pickup point
+   * DELETE /api/v1/rides/:rideId/pickup-points/:pickupPointId
+   */
+  async removePickupPoint(req, res, next) {
+    try {
+      const { rideId, pickupPointId } = req.params;
+      const driverId = req.user.userId;
 
-//   /**
-//    * Get driver's recurring rides
-//    * GET /api/v1/rides/recurring/my-recurring
-//    */
-//   async getMyRecurringRides(req, res, next) {
-//     try {
-//       const driverId = req.user.id;
+      await this.rideService.removePickupPoint(rideId, driverId, pickupPointId);
 
-//       const recurringRides = await this.rideService.getDriverRecurringRides(driverId);
+      return success(res, 'Pickup point removed');
+    } catch (error) {
+      next(error);
+    }
+  }
 
-//       return res.json(createResponse('Your recurring rides', recurringRides));
-//     } catch (error) {
-//       next(error);
-//     }
-//   }
+  /**
+   * Reorder pickup points
+   * PUT /api/v1/rides/:rideId/pickup-points/reorder
+   */
+  async reorderPickupPoints(req, res, next) {
+    try {
+      const { rideId } = req.params;
+      const driverId = req.user.userId;
+      const { orderedIds } = req.body; // Array of pickupPointIds in new order
 
-//   /**
-//    * Get popular routes
-//    * GET /api/v1/rides/stats/popular-routes
-//    */
-//   async getPopularRoutes(req, res, next) {
-//     try {
-//       const { days = 30, limit = 10 } = req.query;
+      const pickupPoints = await this.rideService.reorderPickupPoints(rideId, driverId, orderedIds);
 
-//       const popularRoutes = await this.rideService.getPopularRoutes({
-//         days: parseInt(days),
-//         limit: parseInt(limit)
-//       });
+      return success(res, 'Pickup points reordered', { pickupPoints });
+    } catch (error) {
+      next(error);
+    }
+  }
 
-//       return res.json(
-//         createResponse('Popular routes', {
-//           routes: popularRoutes,
-//           period: `Last ${days} days`,
-//         }),
-//       );
-//     } catch (error) {
-//       next(error);
-//     }
-//   }
+  /**
+   * Get pickup points for a ride
+   * GET /api/v1/rides/:rideId/pickup-points
+   */
+  async getPickupPoints(req, res, next) {
+    try {
+      const { rideId } = req.params;
 
-//   /**
-//    * Get ride bookings (Driver only)
-//    * GET /api/v1/rides/:rideId/bookings
-//    */
-//   async getRideBookings(req, res, next) {
-//     try {
-//       const { rideId } = req.params;
-//       const driverId = req.user.id;
+      const pickupPoints = await this.rideService.getPickupPoints(rideId);
 
-//       // Verify driver owns this ride
-//       const ride = await this.rideService.getRideById(rideId);
-//       if (ride.driverId !== driverId) {
-//         return res
-//           .status(403)
-//           .json(createErrorResponse('You are not authorized to view bookings for this ride'));
-//       }
+      return success(res, 'Pickup points retrieved', { pickupPoints });
+    } catch (error) {
+      next(error);
+    }
+  }
 
-//       const bookings = await this.rideService.getRideBookings(rideId);
+  // ─── RECURRING RIDES ─────────────────────────────────────────
 
-//       return res.json(
-//         createResponse('Ride bookings', {
-//           ride: {
-//             id: ride.id,
-//             route: `${ride.startLocation.area} to ${ride.endLocation.area}`,
-//             departureTime: ride.departureTime,
-//             totalSeats: ride.totalSeats,
-//             availableSeats: ride.availableSeats,
-//           },
-//           bookings,
-//           summary: {
-//             total: bookings.length,
-//             confirmed: bookings.filter((b) => b.status === 'confirmed').length,
-//             pending: bookings.filter((b) => b.status === 'pending').length,
-//             cashPending: bookings.filter((b) => b.paymentStatus === 'cash_pending').length,
-//             cashReceived: bookings.filter((b) => b.paymentStatus === 'cash_received').length,
-//           },
-//         }),
-//       );
-//     } catch (error) {
-//       next(error);
-//     }
-//   }
+  /**
+   * Create a recurring ride schedule
+   * POST /api/v1/rides/recurring
+   */
+  async createRecurringRide(req, res, next) {
+    try {
+      const driverId = req.user.userId;
 
-//   /**
-//    * Get ride suggestions based on user history
-//    * GET /api/v1/rides/suggestions
-//    */
-//   async getRideSuggestions(req, res, next) {
-//     try {
-//       const userId = req.user.id;
-//       const { date, limit = 5 } = req.query;
+      const result = await this.rideService.createRecurringRide(driverId, req.body);
 
-//       const suggestions = await this.rideService.getRideSuggestions(userId, {
-//         date: date || new Date().toISOString().split('T')[0],
-//         limit: parseInt(limit)
-//       });
+      logger.info('Recurring ride created', { driverId, scheduleId: result.scheduleId });
 
-//       return res.json(createResponse('Ride suggestions', suggestions));
-//     } catch (error) {
-//       next(error);
-//     }
-//   }
+      return created(res, 'Recurring ride schedule created', { schedule: result });
+    } catch (error) {
+      next(error);
+    }
+  }
 
-//   /**
-//    * Update available seats (Driver only)
-//    * PATCH /api/v1/rides/:rideId/seats
-//    */
-//   async updateAvailableSeats(req, res, next) {
-//     try {
-//       const { rideId } = req.params;
-//       const { availableSeats } = req.body;
-//       const driverId = req.user.id;
+  /**
+   * Get driver's recurring ride schedules
+   * GET /api/v1/rides/recurring/my-schedules
+   */
+  async getMyRecurringRides(req, res, next) {
+    try {
+      const driverId = req.user.userId;
 
-//       if (availableSeats === undefined || availableSeats < 0) {
-//         return res
-//           .status(400)
-//           .json(createErrorResponse('Valid available seats number is required'));
-//       }
+      const schedules = await this.rideService.getRecurringRides(driverId);
 
-//       const updatedRide = await this.rideService.updateAvailableSeats(
-//         rideId,
-//         driverId,
-//         availableSeats,
-//       );
+      return success(res, 'Recurring ride schedules', { schedules });
+    } catch (error) {
+      next(error);
+    }
+  }
 
-//       return res.json(
-//         createResponse('Available seats updated', {
-//           rideId: updatedRide.id,
-//           availableSeats: updatedRide.availableSeats,
-//           totalSeats: updatedRide.totalSeats,
-//         }),
-//       );
-//     } catch (error) {
-//       next(error);
-//     }
-//   }
-// }
+  /**
+   * Cancel a recurring ride schedule
+   * POST /api/v1/rides/recurring/:scheduleId/cancel
+   */
+  async cancelRecurringRide(req, res, next) {
+    try {
+      const { scheduleId } = req.params;
+      const driverId = req.user.userId;
 
-// module.exports = new RideController();
+      await this.rideService.cancelRecurringRide(scheduleId, driverId);
+
+      return success(res, 'Recurring ride schedule cancelled');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // ─── RIDE BOOKINGS & PASSENGERS ──────────────────────────────
+
+  /**
+   * Get bookings for a ride (driver view)
+   * GET /api/v1/rides/:rideId/bookings
+   */
+  async getRideBookings(req, res, next) {
+    try {
+      const { rideId } = req.params;
+      const driverId = req.user.userId;
+      const { status } = req.query;
+
+      const bookings = await this.rideService.getRideBookings(rideId, driverId, { status });
+
+      return success(res, 'Ride bookings retrieved', { bookings });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Get confirmed passengers for a ride (driver view)
+   * GET /api/v1/rides/:rideId/passengers
+   */
+  async getRidePassengers(req, res, next) {
+    try {
+      const { rideId } = req.params;
+      const driverId = req.user.userId;
+
+      const passengers = await this.rideService.getRidePassengers(rideId, driverId);
+
+      return success(res, 'Passengers retrieved', { passengers });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // ─── MATCHING & SUGGESTIONS ──────────────────────────────────
+
+  /**
+   * Get matching rides for a passenger
+   * GET /api/v1/rides/match
+   */
+  async getMatchingRides(req, res, next) {
+    try {
+      const userId = req.user.userId;
+      const { fromLat, fromLng, toLat, toLng, date, time, seats = 1 } = req.query;
+
+      const matches = await this.matchingService.findMatchingRides(userId, {
+        from: { lat: parseFloat(fromLat), lng: parseFloat(fromLng) },
+        to: { lat: parseFloat(toLat), lng: parseFloat(toLng) },
+        date,
+        time,
+        seats: parseInt(seats, 10),
+      });
+
+      return success(res, 'Matching rides found', { matches });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Get ride suggestions based on user's history
+   * GET /api/v1/rides/suggestions
+   */
+  async getSuggestions(req, res, next) {
+    try {
+      const userId = req.user.userId;
+
+      const suggestions = await this.matchingService.getSuggestions(userId);
+
+      return success(res, 'Ride suggestions', { suggestions });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Get popular routes
+   * GET /api/v1/rides/popular-routes
+   */
+  async getPopularRoutes(req, res, next) {
+    try {
+      const { limit = 10 } = req.query;
+
+      const routes = await this.rideService.getPopularRoutes(parseInt(limit, 10));
+
+      return success(res, 'Popular routes', { routes });
+    } catch (error) {
+      next(error);
+    }
+  }
+}
+
+module.exports = new RideController();

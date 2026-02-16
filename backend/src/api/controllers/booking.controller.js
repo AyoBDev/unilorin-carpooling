@@ -1,435 +1,353 @@
-// /**
-//  * Booking Controller
-//  * Path: src/api/controllers/booking.controller.js
-//  *
-//  * Handles all booking-related HTTP requests
-//  * Phase 1: Cash payment management
-//  */
+/**
+ * Booking Controller
+ * University of Ilorin Carpooling Platform
+ *
+ * Handles booking creation, confirmation, verification codes,
+ * cash payment workflow, ride start/complete, cancellation,
+ * no-show handling, and booking history.
+ *
+ * Phase 1: Cash/offline payment only.
+ *
+ * Path: src/api/controllers/BookingController.js
+ *
+ * @module controllers/BookingController
+ */
 
-// const BookingService = require('@core/services/booking.service');
-// const { createResponse, createErrorResponse } = require('@shared/utils/response');
-// const { validateBooking, validateCashPayment } = require('@api/validators/booking.validator');
-// const logger = require('@shared/utils/logger');
+const { BookingService } = require('../../core/services');
+const { success, created, paginated } = require('../../shared/utils/response');
+const { logger } = require('../../shared/utils/logger');
 
-// class BookingController {
-//   constructor() {
-//     this.bookingService = new BookingService();
-//   }
+class BookingController {
+  constructor() {
+    this.bookingService = BookingService;
 
-//   /**
-//    * Create a new booking
-//    * POST /api/v1/bookings
-//    */
-//   async createBooking(req, res, next) {
-//     try {
-//       const userId = req.user.id;
-//       const { rideId, seats, pickupPointId, notes } = req.body;
+    this.createBooking = this.createBooking.bind(this);
+    this.getBooking = this.getBooking.bind(this);
+    this.getMyBookings = this.getMyBookings.bind(this);
+    this.cancelBooking = this.cancelBooking.bind(this);
+    this.confirmBooking = this.confirmBooking.bind(this);
+    this.getVerificationCode = this.getVerificationCode.bind(this);
+    this.verifyPassenger = this.verifyPassenger.bind(this);
+    this.startBooking = this.startBooking.bind(this);
+    this.completeBooking = this.completeBooking.bind(this);
+    this.markNoShow = this.markNoShow.bind(this);
+    this.getBookingStatistics = this.getBookingStatistics.bind(this);
+    this.getUpcomingBookings = this.getUpcomingBookings.bind(this);
+    this.getPastBookings = this.getPastBookings.bind(this);
+  }
 
-//       // Validate input
-//       const validation = validateBooking(req.body);
-//       if (validation.error) {
-//         return res
-//           .status(400)
-//           .json(createErrorResponse('Validation failed', validation.error.details));
-//       }
+  // ─── BOOKING CRUD ────────────────────────────────────────────
 
-//       // Create booking with cash payment (Phase 1 default)
-//       const bookingData = {
-//         rideId,
-//         seats,
-//         pickupPointId,
-//         notes,
-//         paymentMethod: 'cash', // Default for Phase 1
-//       };
+  /**
+   * Create a new booking (cash payment default for Phase 1)
+   * POST /api/v1/bookings
+   */
+  async createBooking(req, res, next) {
+    try {
+      const passengerId = req.user.userId;
+      const bookingData = {
+        ...req.body,
+        paymentMethod: 'cash', // Phase 1 default
+      };
 
-//       const booking = await this.bookingService.createBooking(bookingData, userId);
+      const booking = await this.bookingService.createBooking(passengerId, bookingData);
 
-//       // Return booking with payment instructions
-//       return res.status(201).json(
-//         createResponse(
-//           `Booking created successfully. Please pay ₦${booking.fare} in cash to the driver.`,
-//           {
-//             booking,
-//             paymentInstructions: {
-//               method: 'cash',
-//               amount: booking.fare,
-//               currency: 'NGN',
-//               instruction: 'Pay driver in cash when boarding',
-//               verificationCode: booking.verificationCode,
-//               bookingCode: booking.bookingCode,
-//             },
-//           },
-//         ),
-//       );
-//     } catch (error) {
-//       logger.error('Failed to create booking', { error, userId: req.user.id });
-//       next(error);
-//     }
-//   }
+      logger.info('Booking created', {
+        passengerId,
+        bookingId: booking.bookingId,
+        rideId: booking.rideId,
+      });
 
-//   /**
-//    * Get booking details
-//    * GET /api/v1/bookings/:bookingId
-//    */
-//   async getBookingDetails(req, res, next) {
-//     try {
-//       const { bookingId } = req.params;
-//       const userId = req.user.id;
+      return created(res, 'Booking created successfully. Please pay cash to the driver.', {
+        booking,
+        verificationCode: booking.verificationCode,
+        paymentInstructions: {
+          method: 'cash',
+          amount: booking.totalAmount,
+          currency: 'NGN',
+          note: 'Please have exact change ready. Pay the driver when you board.',
+        },
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
 
-//       const booking = await this.bookingService.getBookingById(bookingId);
+  /**
+   * Get booking details
+   * GET /api/v1/bookings/:bookingId
+   */
+  async getBooking(req, res, next) {
+    try {
+      const { bookingId } = req.params;
+      const { userId } = req.user;
 
-//       // Check if user is authorized to view this booking
-//       if (booking.passengerId !== userId && booking.driverId !== userId) {
-//         return res
-//           .status(403)
-//           .json(createErrorResponse('You are not authorized to view this booking'));
-//       }
+      const booking = await this.bookingService.getBookingById(bookingId, userId);
 
-//       return res.json(createResponse('Booking details retrieved', booking));
-//     } catch (error) {
-//       next(error);
-//     }
-//   }
+      return success(res, 'Booking details retrieved', { booking });
+    } catch (error) {
+      return next(error);
+    }
+  }
 
-//   /**
-//    * Get user's bookings
-//    * GET /api/v1/bookings/my-bookings
-//    */
-//   async getMyBookings(req, res, next) {
-//     try {
-//       const userId = req.user.id;
-//       const {
-//         role = 'passenger',
-//         status,
-//         paymentStatus,
-//         startDate,
-//         endDate,
-//         page = 1,
-//         limit = 20,
-//       } = req.query;
+  /**
+   * Get current user's bookings
+   * GET /api/v1/bookings
+   */
+  async getMyBookings(req, res, next) {
+    try {
+      const { userId } = req.user;
+      const {
+        status,
+        role = 'passenger', // 'passenger' or 'driver'
+        page = 1,
+        limit = 20,
+        sortBy = 'createdAt',
+        sortOrder = 'desc',
+      } = req.query;
 
-//       const filters = {
-//         status,
-//         paymentStatus,
-//         startDate,
-//         endDate,
-//       };
+      const result = await this.bookingService.getUserBookings(userId, {
+        status,
+        role,
+        page: parseInt(page, 10),
+        limit: parseInt(limit, 10),
+        sortBy,
+        sortOrder,
+      });
 
-//       const bookings = await this.bookingService.getUserBookings(userId, role, filters, {
-//         page,
-//         limit,
-//       });
+      return paginated(res, 'Bookings retrieved', result.bookings, result.pagination);
+    } catch (error) {
+      return next(error);
+    }
+  }
 
-//       // Add payment summary for drivers
-//       let paymentSummary = null;
-//       if (role === 'driver') {
-//         paymentSummary = await this.bookingService.getPaymentSummary(userId);
-//       }
+  // ─── BOOKING ACTIONS ─────────────────────────────────────────
 
-//       return res.json(
-//         createResponse('Bookings retrieved', {
-//           bookings,
-//           paymentSummary,
-//           pagination: {
-//             page: parseInt(page),
-//             limit: parseInt(limit),
-//             total: bookings.length,
-//           },
-//         }),
-//       );
-//     } catch (error) {
-//       next(error);
-//     }
-//   }
+  /**
+   * Cancel a booking
+   * POST /api/v1/bookings/:bookingId/cancel
+   */
+  async cancelBooking(req, res, next) {
+    try {
+      const { bookingId } = req.params;
+      const { userId } = req.user;
+      const { reason } = req.body || {};
 
-//   /**
-//    * Cancel booking
-//    * POST /api/v1/bookings/:bookingId/cancel
-//    */
-//   async cancelBooking(req, res, next) {
-//     try {
-//       const { bookingId } = req.params;
-//       const { reason } = req.body;
-//       const userId = req.user.id;
+      const result = await this.bookingService.cancelBooking(bookingId, userId, reason);
 
-//       if (!reason) {
-//         return res.status(400).json(createErrorResponse('Cancellation reason is required'));
-//       }
+      logger.info('Booking cancelled', { userId, bookingId, reason });
 
-//       const cancelledBooking = await this.bookingService.cancelBooking(bookingId, userId, reason);
+      return success(res, 'Booking cancelled successfully', {
+        booking: result.booking,
+        isLateCancellation: result.isLateCancellation,
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
 
-//       return res.json(createResponse('Booking cancelled successfully', cancelledBooking));
-//     } catch (error) {
-//       next(error);
-//     }
-//   }
+  /**
+   * Driver confirms a booking
+   * POST /api/v1/bookings/:bookingId/confirm
+   */
+  async confirmBooking(req, res, next) {
+    try {
+      const { bookingId } = req.params;
+      const { driverId } = req.user;
 
-//   /**
-//    * Verify passenger (Driver action)
-//    * POST /api/v1/bookings/:bookingId/verify-passenger
-//    */
-//   async verifyPassenger(req, res, next) {
-//     try {
-//       const { bookingId } = req.params;
-//       const { verificationCode } = req.body;
-//       const driverId = req.user.id;
+      const booking = await this.bookingService.confirmBooking(bookingId, driverId);
 
-//       if (!verificationCode) {
-//         return res.status(400).json(createErrorResponse('Verification code is required'));
-//       }
+      logger.info('Booking confirmed by driver', { driverId, bookingId });
 
-//       const result = await this.bookingService.verifyPassenger(
-//         bookingId,
-//         driverId,
-//         verificationCode,
-//       );
+      return success(res, 'Booking confirmed', { booking });
+    } catch (error) {
+      return next(error);
+    }
+  }
 
-//       return res.json(
-//         createResponse('Passenger verified successfully', {
-//           verified: true,
-//           booking: result,
-//           nextStep: 'Start the ride when ready',
-//         }),
-//       );
-//     } catch (error) {
-//       next(error);
-//     }
-//   }
+  // ─── VERIFICATION & RIDE FLOW ────────────────────────────────
 
-//   /**
-//    * Start ride (Driver action)
-//    * POST /api/v1/bookings/:bookingId/start
-//    */
-//   async startRide(req, res, next) {
-//     try {
-//       const { bookingId } = req.params;
-//       const { verificationCode } = req.body;
-//       const driverId = req.user.id;
+  /**
+   * Get verification code for a booking (passenger)
+   * GET /api/v1/bookings/:bookingId/verification
+   */
+  async getVerificationCode(req, res, next) {
+    try {
+      const { bookingId } = req.params;
+      const passengerId = req.user.userId;
 
-//       const booking = await this.bookingService.startRide(bookingId, driverId, verificationCode);
+      const verification = await this.bookingService.getVerificationCode(bookingId, passengerId);
 
-//       return res.json(
-//         createResponse('Ride started successfully', {
-//           booking,
-//           status: 'in_progress',
-//           message: 'Ride is now in progress',
-//         }),
-//       );
-//     } catch (error) {
-//       next(error);
-//     }
-//   }
+      return success(res, 'Verification code retrieved', {
+        verificationCode: verification.code,
+        expiresAt: verification.expiresAt,
+        instructions: 'Show this code to the driver when boarding.',
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
 
-//   /**
-//    * Complete booking and confirm cash payment (Driver action)
-//    * POST /api/v1/bookings/:bookingId/complete
-//    */
-//   async completeBooking(req, res, next) {
-//     try {
-//       const { bookingId } = req.params;
-//       const { amountReceived, paymentNotes } = req.body;
-//       const driverId = req.user.id;
+  /**
+   * Verify a passenger's code (driver)
+   * POST /api/v1/bookings/:bookingId/verify
+   */
+  async verifyPassenger(req, res, next) {
+    try {
+      const { bookingId } = req.params;
+      const driverId = req.user.userId;
+      const { verificationCode } = req.body;
 
-//       // Validate cash payment details
-//       const validation = validateCashPayment(req.body);
-//       if (validation.error) {
-//         return res
-//           .status(400)
-//           .json(createErrorResponse('Invalid payment details', validation.error.details));
-//       }
+      const result = await this.bookingService.verifyPassenger(
+        bookingId,
+        driverId,
+        verificationCode,
+      );
 
-//       const completedBooking = await this.bookingService.completeBooking(bookingId, driverId, {
-//         amountReceived,
-//         paymentNotes,
-//       });
+      logger.info('Passenger verified', { driverId, bookingId });
 
-//       return res.json(
-//         createResponse('Booking completed and cash payment confirmed', {
-//           booking: completedBooking,
-//           payment: {
-//             status: 'cash_received',
-//             amount: amountReceived,
-//             notes: paymentNotes,
-//           }
-//         })
-//       );
-//     } catch (error) {
-//       next(error);
-//     }
-//   }
+      return success(res, 'Passenger verified successfully', { booking: result });
+    } catch (error) {
+      return next(error);
+    }
+  }
 
-//   /**
-//    * Confirm cash payment separately (Driver action)
-//    * POST /api/v1/bookings/:bookingId/confirm-cash
-//    */
-//   async confirmCashPayment(req, res, next) {
-//     try {
-//       const { bookingId } = req.params;
-//       const { amountReceived, paymentNotes } = req.body;
-//       const driverId = req.user.id;
+  /**
+   * Start a booking ride (driver verifies code and starts)
+   * POST /api/v1/bookings/:bookingId/start
+   */
+  async startBooking(req, res, next) {
+    try {
+      const { bookingId } = req.params;
+      const driverId = req.user.userId;
+      const { verificationCode } = req.body;
 
-//       const booking = await this.bookingService.confirmCashPayment(
-//         bookingId,
-//         driverId,
-//         amountReceived,
-//         paymentNotes,
-//       );
+      const booking = await this.bookingService.startBooking(bookingId, driverId, verificationCode);
 
-//       return res.json(
-//         createResponse('Cash payment confirmed', {
-//           bookingId: booking.id,
-//           paymentStatus: 'cash_received',
-//           amountReceived,
-//           confirmedAt: booking.paymentConfirmedAt,
-//         })
-//       );
-//     } catch (error) {
-//       next(error);
-//     }
-//   }
+      logger.info('Booking ride started', { driverId, bookingId });
 
-//   /**
-//    * Mark passenger as no-show (Driver action)
-//    * POST /api/v1/bookings/:bookingId/no-show
-//    */
-//   async markNoShow(req, res, next) {
-//     try {
-//       const { bookingId } = req.params;
-//       const driverId = req.user.id;
+      return success(res, 'Ride started. Passenger verified and on board.', { booking });
+    } catch (error) {
+      return next(error);
+    }
+  }
 
-//       const booking = await this.bookingService.markNoShow(bookingId, driverId);
+  /**
+   * Complete a booking (driver confirms cash received)
+   * POST /api/v1/bookings/:bookingId/complete
+   */
+  async completeBooking(req, res, next) {
+    try {
+      const { bookingId } = req.params;
+      const driverId = req.user.userId;
+      const { cashReceived = true } = req.body;
 
-//       return res.json(createResponse('Passenger marked as no-show', booking));
-//     } catch (error) {
-//       next(error);
-//     }
-//   }
+      const result = await this.bookingService.completeBooking(bookingId, driverId, {
+        cashReceived,
+      });
 
-//   /**
-//    * Get driver's daily cash report
-//    * GET /api/v1/bookings/driver/cash-report
-//    */
-//   async getCashReport(req, res, next) {
-//     try {
-//       const driverId = req.user.id;
-//       const { date } = req.query; // YYYY-MM-DD format
+      logger.info('Booking completed', {
+        driverId,
+        bookingId,
+        cashReceived,
+        amount: result.amount,
+      });
 
-//       const reportDate = date || new Date().toISOString().split('T')[0];
-//       const report = await this.bookingService.getDailyCashReport(driverId, reportDate);
+      return success(res, 'Booking completed. Cash payment recorded.', {
+        booking: result.booking,
+        payment: {
+          method: 'cash',
+          amount: result.amount,
+          status: cashReceived ? 'received' : 'pending',
+          currency: 'NGN',
+        },
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
 
-//       return res.json(
-//         createResponse('Daily cash report', {
-//           date: reportDate,
-//           summary: {
-//             totalRides: report.totalRides,
-//             completedRides: report.completedRides,
-//             totalExpectedCash: report.totalExpectedCash,
-//             totalCollectedCash: report.totalCollectedCash,
-//             pendingCash: report.pendingCash,
-//           },
-//           bookings: report.bookings,
-//           exportUrl: `/api/v1/reports/driver/cash-report/export?date=${reportDate}`,
-//         }),
-//       );
-//     } catch (error) {
-//       next(error);
-//     }
-//   }
+  // ─── NO-SHOW HANDLING ────────────────────────────────────────
 
-//   /**
-//    * Get driver's pending payments
-//    * GET /api/v1/bookings/driver/pending-payments
-//    */
-//   async getPendingPayments(req, res, next) {
-//     try {
-//       const driverId = req.user.id;
-//       const { startDate, endDate } = req.query;
+  /**
+   * Mark a passenger as no-show (driver)
+   * POST /api/v1/bookings/:bookingId/no-show
+   */
+  async markNoShow(req, res, next) {
+    try {
+      const { bookingId } = req.params;
+      const driverId = req.user.userId;
+      const { reason } = req.body || {};
 
-//       const pendingBookings = await this.bookingService.getPendingPayments(driverId, {
-//         startDate,
-//         endDate,
-//       });
+      const result = await this.bookingService.markNoShow(bookingId, driverId, reason);
 
-//       const totalPending = pendingBookings.reduce((sum, booking) => sum + booking.fare, 0);
+      logger.info('Passenger marked as no-show', { driverId, bookingId });
 
-//       return res.json(
-//         createResponse('Pending payments', {
-//           totalPending,
-//           count: pendingBookings.length,
-//           bookings: pendingBookings.map(b => ({
-//             bookingCode: b.bookingCode,
-//             passengerName: b.passengerName,
-//             amount: b.fare,
-//             rideDate: b.scheduledPickupTime,
-//             daysPending: Math.floor((new Date() - new Date(b.createdAt)) / (1000 * 60 * 60 * 24)),
-//           })),
-//         }),
-//       );
-//     } catch (error) {
-//       next(error);
-//     }
-//   }
+      return success(res, 'Passenger marked as no-show', { booking: result });
+    } catch (error) {
+      return next(error);
+    }
+  }
 
-//   /**
-//    * Rate booking (both driver and passenger can rate)
-//    * POST /api/v1/bookings/:bookingId/rate
-//    */
-//   async rateBooking(req, res, next) {
-//     try {
-//       const { bookingId } = req.params;
-//       const { rating, comment } = req.body;
-//       const userId = req.user.id;
+  // ─── HISTORY & STATISTICS ────────────────────────────────────
 
-//       if (!rating || rating < 1 || rating > 5) {
-//         return res.status(400).json(createErrorResponse('Rating must be between 1 and 5'));
-//       }
+  /**
+   * Get upcoming bookings
+   * GET /api/v1/bookings/upcoming
+   */
+  async getUpcomingBookings(req, res, next) {
+    try {
+      const { userId } = req.user;
+      const { role = 'passenger', limit = 10 } = req.query;
 
-//       const ratingResult = await this.bookingService.addRating(bookingId, userId, rating, comment);
+      const bookings = await this.bookingService.getUpcomingBookings(userId, {
+        role,
+        limit: parseInt(limit, 10),
+      });
 
-//       return res.json(createResponse('Rating submitted successfully', ratingResult));
-//     } catch (error) {
-//       next(error);
-//     }
-//   }
+      return success(res, 'Upcoming bookings', { bookings });
+    } catch (error) {
+      return next(error);
+    }
+  }
 
-//   /**
-//    * Get booking statistics
-//    * GET /api/v1/bookings/statistics
-//    */
-//   async getBookingStatistics(req, res, next) {
-//     try {
-//       const userId = req.user.id;
-//       const { role = 'passenger', period = '30days' } = req.query;
+  /**
+   * Get past bookings
+   * GET /api/v1/bookings/past
+   */
+  async getPastBookings(req, res, next) {
+    try {
+      const { userId } = req.user;
+      const { role = 'passenger', page = 1, limit = 20 } = req.query;
 
-//       const stats = await this.bookingService.getBookingStatistics(userId, role, period);
+      const result = await this.bookingService.getPastBookings(userId, {
+        role,
+        page: parseInt(page, 10),
+        limit: parseInt(limit, 10),
+      });
 
-//       return res.json(createResponse('Booking statistics', stats));
-//     } catch (error) {
-//       next(error);
-//     }
-//   }
+      return paginated(res, 'Past bookings', result.bookings, result.pagination);
+    } catch (error) {
+      return next(error);
+    }
+  }
 
-//   /**
-//    * Get booking QR code (for easy verification)
-//    * GET /api/v1/bookings/:bookingId/qr-code
-//    */
-//   async getBookingQRCode(req, res, next) {
-//     try {
-//       const { bookingId } = req.params;
-//       const userId = req.user.id;
+  /**
+   * Get booking statistics
+   * GET /api/v1/bookings/statistics
+   */
+  async getBookingStatistics(req, res, next) {
+    try {
+      const { userId } = req.user;
+      const { role = 'passenger', period = '30days' } = req.query;
 
-//       const qrCode = await this.bookingService.generateBookingQRCode(bookingId, userId);
+      const stats = await this.bookingService.getBookingStatistics(userId, role, period);
 
-//       return res.json(
-//         createResponse('QR code generated', {
-//           qrCode,
-//           verificationCode: qrCode.verificationCode,
-//         })
-//       );
-//     } catch (error) {
-//       next(error);
-//     }
-//   }
-// }
+      return success(res, 'Booking statistics', { statistics: stats });
+    } catch (error) {
+      return next(error);
+    }
+  }
+}
 
-// module.exports = new BookingController();
+module.exports = new BookingController();
