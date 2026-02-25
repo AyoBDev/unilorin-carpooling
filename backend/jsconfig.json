@@ -5,5 +5,5 @@
       "moduleResolution": "nodenext"
     },
     "exclude": ["node_modules", "dist"],
-    "include": ["src"]
+    "include": ["src", "src/infrastructure", "tests/test-cache.js"]
   }

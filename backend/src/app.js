@@ -120,7 +120,12 @@ const redisClient = require('./infrastructure/cache/RedisClient');
 
 // Add health check endpoint
 app.get('/api/v1/health', async (req, res) => {
-  const cacheHealth = await redisClient.healthCheck();
+  let cacheHealth = 'disabled';
+  try {
+    cacheHealth = (await redisClient.healthCheck()) || 'unavailable';
+  } catch (e) {
+    cacheHealth = 'error';
+  }
   res.json({
     success: true,
     data: {

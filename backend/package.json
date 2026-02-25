@@ -15,8 +15,13 @@
     "test": "tests"
   },
   "scripts": {
-    "start": "node src/app.js",
-    "dev": "nodemon src/app.js",
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "build:lambda": "../scripts/build-lambda.sh",
+    "build:lambda:layer": "../scripts/build-lambda.sh --layer",
+    "deploy:dev": "../scripts/build-lambda.sh --deploy dev",
+    "deploy:staging": "../scripts/build-lambda.sh --deploy staging",
+    "deploy:prod": "../scripts/build-lambda.sh --deploy production",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
@@ -37,7 +42,7 @@
     "@aws-sdk/lib-dynamodb": "^3.968.0",
     "aws-lambda": "^1.0.6",
     "axios": "^1.13.2",
-    "bcrypt": "^6.0.0",
+    "bcryptjs": "^3.0.3",
     "compression": "^1.8.1",
     "cors": "^2.8.5",
     "dayjs": "^1.11.19",
@@ -79,7 +84,12 @@
     "supertest": "^7.2.2"
   },
   "lint-staged": {
-    "*.ts": ["eslint --fix", "prettier --write"],
-    "*.json": ["prettier --write"]
+    "*.ts": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.json": [
+      "prettier --write"
+    ]
   }
 }
