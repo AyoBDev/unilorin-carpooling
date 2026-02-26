@@ -12,11 +12,11 @@
 #   dynamodb-stream      → DynamoDB change notifications
 #   sqs-notification     → Async notification delivery
 #
-# Handler paths match esbuild output structure:
-#   handlers/api.handler.js        (NOT src/lambda/handlers/)
-#   handlers/scheduled.handler.js
-#   triggers/dynamodb.trigger.js
-#   triggers/sqs.trigger.js
+# Handler paths match build script output (camelCase after dot-rename):
+#   handlers/apiHandler.js         (NOT src/lambda/handlers/)
+#   handlers/scheduledHandler.js
+#   triggers/dynamodbTrigger.js
+#   triggers/sqsTrigger.js
 # ─────────────────────────────────────────────────────────
 
 terraform {
@@ -68,7 +68,7 @@ resource "aws_lambda_function" "api" {
 
   filename         = var.api_zip_path
   source_code_hash = filebase64sha256(var.api_zip_path)
-  handler          = "handlers/api.handler.handler"
+  handler          = "handlers/apiHandler.handler"
   runtime          = var.runtime
   memory_size      = var.api_memory_size
   timeout          = var.api_timeout
@@ -178,7 +178,7 @@ resource "aws_lambda_function" "scheduled" {
 
   filename         = var.api_zip_path
   source_code_hash = filebase64sha256(var.api_zip_path)
-  handler          = "handlers/scheduled.handler.handler"
+  handler          = "handlers/scheduledHandler.handler"
   runtime          = var.runtime
   memory_size      = each.value.memory
   timeout          = each.value.timeout
@@ -259,7 +259,7 @@ resource "aws_lambda_function" "dynamodb_stream" {
 
   filename         = var.api_zip_path
   source_code_hash = filebase64sha256(var.api_zip_path)
-  handler          = "triggers/dynamodb.trigger.handler"
+  handler          = "triggers/dynamodbTrigger.handler"
   runtime          = var.runtime
   memory_size      = 512
   timeout          = 60
@@ -340,7 +340,7 @@ resource "aws_lambda_function" "sqs_notification" {
 
   filename         = var.api_zip_path
   source_code_hash = filebase64sha256(var.api_zip_path)
-  handler          = "triggers/sqs.trigger.handler"
+  handler          = "triggers/sqsTrigger.handler"
   runtime          = var.runtime
   memory_size      = 256
   timeout          = 30
