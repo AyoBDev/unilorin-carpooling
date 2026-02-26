@@ -5,5 +5,17 @@
           "node": "20"
         }
       }]
-    ]
+    ],
+    "env": {
+      "test": {
+        "presets": [
+          ["@babel/preset-env", {
+            "targets": {
+              "node": "20"
+            },
+            "modules": "commonjs"
+          }]
+        ]
+      }
+    }
   }
