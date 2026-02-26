@@ -27,6 +27,7 @@ const createMockDriver = (overrides = {}) =>
   createMockUser({
     isDriver: true,
     driverStatus: 'verified',
+    driverVerificationStatus: 'verified',
     role: 'student',
     ...overrides,
   });
@@ -37,41 +38,146 @@ const createMockAdmin = (overrides = {}) =>
     ...overrides,
   });
 
-const createMockRide = (overrides = {}) => ({
-  rideId: randomUUID(),
-  driverId: randomUUID(),
-  origin: { name: 'Main Gate', latitude: 8.4799, longitude: 4.5418 },
-  destination: { name: 'Tanke', latitude: 8.4866, longitude: 4.5591 },
-  departureTime: new Date(Date.now() + 3600000).toISOString(),
-  availableSeats: 3,
-  totalSeats: 4,
-  pricePerSeat: 500,
-  status: 'scheduled',
+const createMockVehicle = (overrides = {}) => ({
+  vehicleId: randomUUID(),
+  userId: randomUUID(),
+  make: 'Toyota',
+  model: 'Camry',
+  color: 'Silver',
+  plateNumber: 'KWL-123-AB',
+  capacity: 4,
+  year: 2020,
+  isActive: true,
+  isPrimary: true,
+  verificationStatus: 'approved',
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
   ...overrides,
 });
 
-const createMockBooking = (overrides = {}) => ({
-  bookingId: randomUUID(),
-  rideId: randomUUID(),
-  passengerId: randomUUID(),
-  seatsBooked: 1,
-  totalPrice: 500,
-  status: 'confirmed',
-  verificationCode: '123456',
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
-  ...overrides,
-});
+const createMockRide = (overrides = {}) => {
+  const driverId = overrides.driverId || randomUUID();
+  const departureDateTime = new Date(Date.now() + 3600000).toISOString();
+  return {
+    rideId: randomUUID(),
+    driverId,
+    vehicleId: randomUUID(),
+    departureDate: '2026-03-01',
+    departureTime: '08:00',
+    departureDateTime,
+    startLocation: {
+      address: 'University of Ilorin Main Gate',
+      coordinates: [8.4799, 4.5418],
+      name: 'Main Gate',
+    },
+    endLocation: {
+      address: 'Tanke Roundabout',
+      coordinates: [8.4866, 4.5591],
+      name: 'Tanke',
+    },
+    pickupPoints: [],
+    availableSeats: 3,
+    totalSeats: 4,
+    bookedSeats: 1,
+    pricePerSeat: 500,
+    waitTime: 5,
+    status: 'active',
+    driver: {
+      userId: driverId,
+      firstName: 'Driver',
+      lastName: 'Test',
+      phone: '+2348012345679',
+      averageRating: 4.5,
+      profilePhoto: null,
+    },
+    vehicle: {
+      vehicleId: randomUUID(),
+      make: 'Toyota',
+      model: 'Camry',
+      color: 'Silver',
+      plateNumber: 'KWL-123-AB',
+      capacity: 4,
+    },
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    ...overrides,
+  };
+};
+
+const createMockBooking = (overrides = {}) => {
+  const passengerId = overrides.passengerId || randomUUID();
+  const driverId = overrides.driverId || randomUUID();
+  return {
+    bookingId: randomUUID(),
+    bookingReference: 'BK-ABC123',
+    rideId: randomUUID(),
+    passengerId,
+    driverId,
+    pickupPointId: null,
+    pickupPointName: 'Main Gate',
+    seats: 1,
+    pricePerSeat: 500,
+    totalAmount: 500,
+    status: 'confirmed',
+    paymentMethod: 'cash',
+    paymentStatus: 'pending',
+    verificationCode: '123456',
+    verificationExpiry: new Date(Date.now() + 86400000).toISOString(),
+    notes: null,
+    rideDate: '2026-03-01',
+    rideTime: '08:00',
+    rideDepartureDateTime: new Date(Date.now() + 3600000).toISOString(),
+    startLocation: {
+      address: 'University of Ilorin Main Gate',
+      coordinates: [8.4799, 4.5418],
+      name: 'Main Gate',
+    },
+    endLocation: {
+      address: 'Tanke Roundabout',
+      coordinates: [8.4866, 4.5591],
+      name: 'Tanke',
+    },
+    passenger: {
+      userId: passengerId,
+      firstName: 'Passenger',
+      lastName: 'Test',
+      phone: '+2348012345678',
+      profilePhoto: null,
+    },
+    driver: {
+      userId: driverId,
+      firstName: 'Driver',
+      lastName: 'Test',
+      phone: '+2348012345679',
+    },
+    vehicle: {
+      vehicleId: randomUUID(),
+      make: 'Toyota',
+      model: 'Camry',
+      color: 'Silver',
+      plateNumber: 'KWL-123-AB',
+      capacity: 4,
+    },
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    ...overrides,
+  };
+};
 
 const createMockRating = (overrides = {}) => ({
   ratingId: randomUUID(),
   bookingId: randomUUID(),
+  rideId: randomUUID(),
   raterId: randomUUID(),
-  rateeId: randomUUID(),
+  ratedUserId: randomUUID(),
+  ratingType: 'driver_rating',
   score: 4,
   comment: 'Great ride!',
+  tags: ['Punctual', 'Safe Driver'],
+  isAnonymous: false,
+  isHidden: false,
+  isReported: false,
+  reportCount: 0,
   createdAt: new Date().toISOString(),
   ...overrides,
 });
@@ -132,6 +238,7 @@ module.exports = {
   createMockUser,
   createMockDriver,
   createMockAdmin,
+  createMockVehicle,
   createMockRide,
   createMockBooking,
   createMockRating,
