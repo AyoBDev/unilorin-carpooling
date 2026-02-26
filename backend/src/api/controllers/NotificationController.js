@@ -18,7 +18,7 @@ const { logger } = require('../../shared/utils/logger');
 
 class NotificationController {
   constructor() {
-    this.notificationService = NotificationService;
+    this.notificationService = new NotificationService();
 
     this.getNotifications = this.getNotifications.bind(this);
     this.getUnreadCount = this.getUnreadCount.bind(this);

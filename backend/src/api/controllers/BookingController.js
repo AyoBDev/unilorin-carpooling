@@ -20,7 +20,7 @@ const { logger } = require('../../shared/utils/logger');
 
 class BookingController {
   constructor() {
-    this.bookingService = BookingService;
+    this.bookingService = new BookingService();
 
     this.createBooking = this.createBooking.bind(this);
     this.getBooking = this.getBooking.bind(this);

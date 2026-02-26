@@ -17,7 +17,7 @@ const { logger } = require('../../shared/utils/logger');
 
 class AuthController {
   constructor() {
-    this.authService = AuthService;
+    this.authService = new AuthService();
 
     // Bind all methods to preserve `this` context in Express routes
     this.register = this.register.bind(this);

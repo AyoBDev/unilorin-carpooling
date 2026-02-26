@@ -64,11 +64,10 @@ const serverlessOptions = {
    * API Gateway. Strip headers that APIGW doesn't forward.
    */
   response: (response) => {
-    // API Gateway handles transfer-encoding itself
-    delete response.headers['transfer-encoding'];
-    // Ensure JSON content type
-    if (!response.headers['content-type']) {
-      response.headers['content-type'] = 'application/json';
+    if (!response.headers) response.headers = {};
+    delete response.headers["transfer-encoding"];
+    if (!response.headers["content-type"]) {
+      response.headers["content-type"] = "application/json";
     }
   },
 };

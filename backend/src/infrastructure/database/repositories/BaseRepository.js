@@ -19,11 +19,12 @@ const {
 
 const logger = require('../../../shared/utils/logger');
 const { AppError } = require('../../../shared/errors/AppError');
-const { getDocClient, getTableName } = require('../config/dynamodb.config');
+const { docClient: getDocClientInstance, getTableName } = require('../config/dynamodb.config');
+
 
 class BaseRepository {
   constructor(entityType) {
-    this.docClient = getDocClient();
+    this.docClient = getDocClientInstance;
     this.tableName = getTableName();
     this.entityType = entityType;
   }

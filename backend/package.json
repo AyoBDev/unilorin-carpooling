@@ -55,6 +55,7 @@
     "lodash": "^4.17.21",
     "nanoid": "^5.1.6",
     "redis": "^5.10.0",
+    "serverless-http": "^4.0.0",
     "uuid": "^13.0.0",
     "winston": "^3.19.0"
   },

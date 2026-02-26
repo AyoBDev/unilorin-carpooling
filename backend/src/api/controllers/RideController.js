@@ -16,8 +16,8 @@ const { logger } = require('../../shared/utils/logger');
 
 class RideController {
   constructor() {
-    this.rideService = RideService;
-    this.matchingService = MatchingService;
+    this.rideService = new RideService();
+    this.matchingService = new MatchingService();
 
     this.createRide = this.createRide.bind(this);
     this.getRide = this.getRide.bind(this);

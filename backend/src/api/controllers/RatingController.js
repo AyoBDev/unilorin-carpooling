@@ -17,7 +17,7 @@ const { logger } = require('../../shared/utils/logger');
 
 class RatingController {
   constructor() {
-    this.ratingService = RatingService;
+    this.ratingService = new RatingService();
 
     this.createRating = this.createRating.bind(this);
     this.getRating = this.getRating.bind(this);

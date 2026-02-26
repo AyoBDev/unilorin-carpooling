@@ -17,7 +17,7 @@ const { logger } = require('../../shared/utils/logger');
 
 class SafetyController {
   constructor() {
-    this.safetyService = SafetyService;
+    this.safetyService = new SafetyService();
 
     this.triggerSOS = this.triggerSOS.bind(this);
     this.resolveSOSAlert = this.resolveSOSAlert.bind(this);

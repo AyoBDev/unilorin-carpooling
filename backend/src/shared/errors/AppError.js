@@ -35,6 +35,8 @@ class AppError extends Error {
     this.statusCode = statusCode;
     this.details = details;
     this.isOperational = isOperational;
+    this.isAppError = true;
+    this.isAppError = true; // Flag to identify this as an AppError
     this.timestamp = new Date().toISOString();
 
     // Capture stack trace, excluding constructor call from it

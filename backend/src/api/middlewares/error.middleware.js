@@ -218,7 +218,7 @@ const errorHandler = (err, req, res, _next) => {
   // ── 1. Determine the right handler ───────
   let response;
 
-  if (err instanceof AppError) {
+  if (err.isOperational !== undefined || err.isAppError) {
     response = handleAppError(err);
   } else if (err.isJoi || err.name === 'ValidationError') {
     response = handleJoiError(err);
@@ -228,7 +228,7 @@ const errorHandler = (err, req, res, _next) => {
     err.name === 'NotBeforeError'
   ) {
     response = handleJwtError(err);
-  } else if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+   } else if (err.name === 'SyntaxError' && err.status === 400 && 'body' in err) {
     response = handleSyntaxError(err);
   } else if (err.name === 'MulterError') {
     response = handleMulterError(err);

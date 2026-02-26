@@ -12,11 +12,17 @@
 #   backend/dist/lambda.zip       → Function code
 #   backend/dist/lambda-layer.zip → Dependencies layer (optional)
 #
-# esbuild output structure (matches Terraform handler paths):
-#   handlers/api.handler.js        → handler = "handlers/api.handler.handler"
-#   handlers/scheduled.handler.js  → handler = "handlers/scheduled.handler.handler"
-#   triggers/dynamodb.trigger.js   → handler = "triggers/dynamodb.trigger.handler"
-#   triggers/sqs.trigger.js        → handler = "triggers/sqs.trigger.handler"
+# IMPORTANT — Lambda handler naming:
+#   Lambda parses handler strings by splitting on dots.
+#   Files like "api.handler.js" break this because Lambda sees
+#   "api" as the module name. We rename esbuild output to
+#   camelCase filenames to avoid the issue:
+#
+#   esbuild output                →  ZIP filename                  →  Terraform handler
+#   handlers/api.handler.js       →  handlers/apiHandler.js        →  handlers/apiHandler.handler
+#   handlers/scheduled.handler.js →  handlers/scheduledHandler.js  →  handlers/scheduledHandler.handler
+#   triggers/dynamodb.trigger.js  →  triggers/dynamodbTrigger.js   →  triggers/dynamodbTrigger.handler
+#   triggers/sqs.trigger.js       →  triggers/sqsTrigger.js        →  triggers/sqsTrigger.handler
 # ─────────────────────────────────────────────────────────
 
 set -euo pipefail
@@ -62,13 +68,10 @@ npm ci --production --ignore-scripts 2>/dev/null || npm install --production --i
 # ── Bundle with esbuild ──────────────────────────────────
 log "Bundling with esbuild..."
 
-# esbuild preserves directory structure relative to the common
-# ancestor of all entry points. With entries under src/lambda/,
-# the common ancestor is src/lambda/, so output becomes:
-#   handlers/api.handler.js
-#   handlers/scheduled.handler.js
-#   triggers/dynamodb.trigger.js
-#   triggers/sqs.trigger.js
+# NOTE: No --minify flag. Minification mangles Winston logger
+# internals (and other libraries that rely on function.name or
+# dynamic property access), causing runtime crashes on Lambda.
+# The ZIP is ~1MB unminified vs ~800KB minified — negligible.
 
 npx esbuild \
   src/lambda/handlers/api.handler.js \
@@ -79,22 +82,43 @@ npx esbuild \
   --platform=node \
   --target=node20 \
   --outdir="$BUILD_DIR" \
-  --minify \
-  --sourcemap \
+  '--external:@aws-sdk/*' \
   --external:aws-sdk \
-  --external:@aws-sdk/* \
   --format=cjs \
   --tree-shaking=true \
   --metafile="$DIST_DIR/meta.json"
+
+# ── Rename files (Lambda dot-in-filename fix) ────────────
+# Lambda splits handler strings on dots to find the module.
+# "handlers/api.handler.handler" → Lambda looks for module "api"  ✗
+# "handlers/apiHandler.handler"  → Lambda looks for module "apiHandler" ✓
+log "Renaming files for Lambda handler compatibility..."
+
+mv "$BUILD_DIR/handlers/api.handler.js"       "$BUILD_DIR/handlers/apiHandler.js"
+mv "$BUILD_DIR/handlers/scheduled.handler.js" "$BUILD_DIR/handlers/scheduledHandler.js"
+mv "$BUILD_DIR/triggers/dynamodb.trigger.js"  "$BUILD_DIR/triggers/dynamodbTrigger.js"
+mv "$BUILD_DIR/triggers/sqs.trigger.js"       "$BUILD_DIR/triggers/sqsTrigger.js"
+
+# Also rename source maps if they exist
+for f in \
+  "$BUILD_DIR/handlers/api.handler.js.map:$BUILD_DIR/handlers/apiHandler.js.map" \
+  "$BUILD_DIR/handlers/scheduled.handler.js.map:$BUILD_DIR/handlers/scheduledHandler.js.map" \
+  "$BUILD_DIR/triggers/dynamodb.trigger.js.map:$BUILD_DIR/triggers/dynamodbTrigger.js.map" \
+  "$BUILD_DIR/triggers/sqs.trigger.js.map:$BUILD_DIR/triggers/sqsTrigger.js.map"
+do
+  src="${f%%:*}"
+  dst="${f##*:}"
+  [ -f "$src" ] && mv "$src" "$dst"
+done
 
 # ── Verify output ────────────────────────────────────────
 log "Verifying build output..."
 
 EXPECTED_FILES=(
-  "handlers/api.handler.js"
-  "handlers/scheduled.handler.js"
-  "triggers/dynamodb.trigger.js"
-  "triggers/sqs.trigger.js"
+  "handlers/apiHandler.js"
+  "handlers/scheduledHandler.js"
+  "triggers/dynamodbTrigger.js"
+  "triggers/sqsTrigger.js"
 )
 
 MISSING=0
@@ -113,14 +137,15 @@ fi
 
 log "All expected files present ✓"
 
-# ── Create ZIP (exclude source maps to save space) ───────
+# ── Create ZIP (exclude source maps and empty dirs) ──────
 log "Creating lambda.zip..."
 cd "$BUILD_DIR"
 zip -r -9 "$DIST_DIR/lambda.zip" . \
   -x "*.DS_Store" \
   -x "__MACOSX/*" \
   -x "*.md" \
-  -x "*.map"
+  -x "*.map" \
+  -x "src/*"
 
 LAMBDA_SIZE=$(du -sh "$DIST_DIR/lambda.zip" | cut -f1)
 log "lambda.zip: $LAMBDA_SIZE"
@@ -163,11 +188,17 @@ if [ "$BUILD_LAYER" = true ]; then
   log "  Layer:     $DIST_DIR/lambda-layer.zip ($LAYER_SIZE)"
 fi
 log ""
-log "Terraform handler paths:"
-log "  API:       handlers/api.handler.handler"
-log "  Scheduled: handlers/scheduled.handler.handler"
-log "  Stream:    triggers/dynamodb.trigger.handler"
-log "  SQS:       triggers/sqs.trigger.handler"
+log "Terraform handler paths (must match main.tf):"
+log "  API:       handlers/apiHandler.handler"
+log "  Scheduled: handlers/scheduledHandler.handler"
+log "  Stream:    triggers/dynamodbTrigger.handler"
+log "  SQS:       triggers/sqsTrigger.handler"
+log ""
+log "Quick deploy:"
+log "  aws lambda update-function-code \\"
+log "    --function-name carpool-dev-api \\"
+log "    --zip-file fileb://$DIST_DIR/lambda.zip \\"
+log "    --region eu-west-1"
 
 # ── Deploy (optional) ────────────────────────────────────
 if [ -n "$DEPLOY_STAGE" ]; then

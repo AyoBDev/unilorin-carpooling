@@ -19,7 +19,7 @@ const { logger } = require('../../shared/utils/logger');
 
 class ReportController {
   constructor() {
-    this.reportingService = ReportingService;
+    this.reportingService = new ReportingService();
 
     // Driver reports
     this.getDriverCashReport = this.getDriverCashReport.bind(this);

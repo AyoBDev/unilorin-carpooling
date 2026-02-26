@@ -334,7 +334,108 @@ const WebSocketEvents = {
   ERROR: 'error',
 };
 
+
+// ─────────────────────────────────────────────
+// Flat event aliases (used by service layer)
+// ─────────────────────────────────────────────
+
+const AUTH_EVENTS = {
+  REGISTRATION_STARTED: 'auth.registration_started',
+  REGISTRATION_COMPLETED: 'auth.registration_completed',
+  REGISTRATION_FAILED: 'auth.registration_failed',
+  LOGIN_STARTED: 'auth.login_started',
+  LOGIN_COMPLETED: 'auth.login_completed',
+  LOGIN_FAILED: 'auth.login_failed',
+  EMAIL_VERIFICATION_STARTED: 'auth.email_verification_started',
+  EMAIL_VERIFICATION_COMPLETED: 'auth.email_verification_completed',
+  EMAIL_VERIFICATION_FAILED: 'auth.email_verification_failed',
+  PASSWORD_RESET_REQUESTED: 'auth.password_reset_requested',
+  PASSWORD_RESET_STARTED: 'auth.password_reset_started',
+  PASSWORD_RESET_COMPLETED: 'auth.password_reset_completed',
+  PASSWORD_RESET_FAILED: 'auth.password_reset_failed',
+  TOKEN_REFRESH_STARTED: 'auth.token_refresh_started',
+  TOKEN_REFRESH_COMPLETED: 'auth.token_refresh_completed',
+  TOKEN_REFRESH_FAILED: 'auth.token_refresh_failed',
+  LOGOUT_STARTED: 'auth.logout_started',
+  LOGOUT_COMPLETED: 'auth.logout_completed',
+  LOGOUT_FAILED: 'auth.logout_failed',
+};
+
+const BOOKING_EVENTS = {
+  BOOKING_CREATED: EventTypes.BOOKING.CREATED,
+  BOOKING_CONFIRMED: EventTypes.BOOKING.CONFIRMED,
+  BOOKING_CANCELLED: EventTypes.BOOKING.CANCELLED,
+  BOOKING_CANCELLED_BY_DRIVER: EventTypes.BOOKING.CANCELLED_BY_DRIVER,
+  BOOKING_STARTED: EventTypes.BOOKING.STARTED,
+  BOOKING_COMPLETED: EventTypes.BOOKING.COMPLETED,
+  BOOKING_NO_SHOW: EventTypes.BOOKING.NO_SHOW,
+  BOOKING_PASSENGER_VERIFIED: EventTypes.BOOKING.PASSENGER_VERIFIED,
+  BOOKING_REMINDER_SENT: EventTypes.BOOKING.REMINDER_SENT,
+  BOOKING_CASH_COLLECTED: EventTypes.BOOKING.CASH_COLLECTED,
+};
+
+const RIDE_EVENTS = {
+  RIDE_CREATED: EventTypes.RIDE.CREATED,
+  RIDE_UPDATED: EventTypes.RIDE.UPDATED,
+  RIDE_CANCELLED: EventTypes.RIDE.CANCELLED,
+  RIDE_STARTED: EventTypes.RIDE.STARTED,
+  RIDE_COMPLETED: EventTypes.RIDE.COMPLETED,
+  RIDE_SEATS_UPDATED: EventTypes.RIDE.SEATS_UPDATED,
+  RIDE_SEARCHED: 'ride.searched',
+  RIDE_FULLY_BOOKED: EventTypes.RIDE.FULLY_BOOKED,
+  RIDE_DEPARTURE_REMINDER: EventTypes.RIDE.DEPARTURE_REMINDER,
+  RIDE_RECURRING_CREATED: EventTypes.RIDE.RECURRING_CREATED,
+  RIDE_RECURRING_CANCELLED: EventTypes.RIDE.RECURRING_CANCELLED,
+};
+
+const NOTIFICATION_EVENTS = {
+  EMAIL_SENT: 'notification.email_sent',
+  SMS_SENT: 'notification.sms_sent',
+  PUSH_SENT: 'notification.push_sent',
+  IN_APP_SENT: 'notification.in_app_sent',
+  NOTIFICATION_CREATED: EventTypes.NOTIFICATION.CREATED,
+  NOTIFICATION_READ: EventTypes.NOTIFICATION.READ,
+  NOTIFICATION_FAILED: EventTypes.NOTIFICATION.FAILED,
+  BULK_SENT: EventTypes.NOTIFICATION.BULK_SENT,
+};
+
+const RATING_EVENTS = {
+  RATING_CREATED: EventTypes.RATING.CREATED,
+  RATING_UPDATED: EventTypes.RATING.UPDATED,
+  RATING_DELETED: EventTypes.RATING.DELETED,
+  DRIVER_RATING_UPDATED: EventTypes.RATING.DRIVER_RATING_UPDATED,
+  PASSENGER_RATING_UPDATED: EventTypes.RATING.PASSENGER_RATING_UPDATED,
+};
+
+const SAFETY_EVENTS = {
+  SOS_TRIGGERED: EventTypes.SAFETY.SOS_TRIGGERED,
+  SOS_RESOLVED: EventTypes.SAFETY.SOS_RESOLVED,
+  LOCATION_SHARED: EventTypes.SAFETY.LOCATION_SHARED,
+  EMERGENCY_CONTACT_NOTIFIED: EventTypes.SAFETY.EMERGENCY_CONTACT_NOTIFIED,
+  INCIDENT_REPORTED: EventTypes.SAFETY.INCIDENT_REPORTED,
+  TRACKING_STARTED: 'safety.tracking_started',
+  TRACKING_STOPPED: 'safety.tracking_stopped',
+};
+
+const USER_EVENTS = {
+  PROFILE_VIEWED: 'user.profile_viewed',
+  PROFILE_UPDATED: EventTypes.USER.PROFILE_UPDATED,
+  ACCOUNT_DELETED: EventTypes.USER.ACCOUNT_DELETED,
+  DRIVER_REGISTERED: EventTypes.DRIVER.REGISTERED,
+  REGISTERED: EventTypes.USER.REGISTERED,
+  VERIFIED: EventTypes.USER.VERIFIED,
+  LOGGED_IN: EventTypes.USER.LOGGED_IN,
+  LOGGED_OUT: EventTypes.USER.LOGGED_OUT,
+};
+
 module.exports = {
+  USER_EVENTS,
+  SAFETY_EVENTS,
+  RATING_EVENTS,
+  NOTIFICATION_EVENTS,
+  RIDE_EVENTS,
+  BOOKING_EVENTS,
+  AUTH_EVENTS,
   EventSources,
   EventTypes,
   NotificationChannels,

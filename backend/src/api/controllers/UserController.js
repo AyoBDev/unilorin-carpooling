@@ -16,7 +16,7 @@ const { logger } = require('../../shared/utils/logger');
 
 class UserController {
   constructor() {
-    this.userService = UserService;
+    this.userService = new UserService();
 
     this.getProfile = this.getProfile.bind(this);
     this.updateProfile = this.updateProfile.bind(this);
