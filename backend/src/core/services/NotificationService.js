@@ -711,6 +711,80 @@ class NotificationService {
   }
 
   /**
+   * Get a single notification by ID
+   * @param {string} notificationId - Notification ID
+   * @param {string} userId - User ID (for ownership check)
+   * @returns {Promise<Object>} Notification
+   */
+  async getNotificationById(notificationId, userId) {
+    const notification = await this.notificationRepository.findById(notificationId);
+
+    if (!notification) {
+      throw new NotFoundError('Notification not found', ERROR_CODES.NOTIFICATION_NOT_FOUND);
+    }
+
+    if (notification.userId !== userId) {
+      throw new BadRequestError('Not authorized', ERROR_CODES.FORBIDDEN);
+    }
+
+    return notification;
+  }
+
+  /**
+   * Send a notification to a specific user (admin/system use)
+   * @param {string} userId - Target user ID
+   * @param {Object} options - Notification options
+   * @param {string} options.title - Notification title
+   * @param {string} options.message - Notification message
+   * @param {string} options.type - Notification category
+   * @param {Array} options.channels - Delivery channels
+   * @param {Object} options.metadata - Additional metadata
+   * @returns {Promise<Object>} Created notification
+   */
+  async sendNotification(userId, options) {
+    const { title, message, type = 'system', channels = ['in_app'], metadata = {} } = options;
+
+    logger.info('Sending notification', {
+      action: 'SEND_NOTIFICATION',
+      userId,
+      type,
+      channels,
+    });
+
+    let result = null;
+
+    if (channels.includes('in_app')) {
+      result = await this._createInAppNotification(userId, {
+        title,
+        message,
+        category: type,
+        data: metadata,
+      });
+    }
+
+    if (channels.includes('push')) {
+      await this._sendPushNotification(userId, {
+        title,
+        body: message,
+        data: { type, ...metadata },
+      });
+    }
+
+    if (channels.includes('email')) {
+      const userEmail = await this._getUserEmail(userId);
+      if (userEmail) {
+        await this._sendEmail(
+          { to: userEmail, subject: title, template: null, data: { message } },
+          userId,
+          type,
+        );
+      }
+    }
+
+    return result;
+  }
+
+  /**
    * Get user's in-app notifications
    * @param {string} userId - User ID
    * @param {Object} options - Query options
@@ -948,6 +1022,48 @@ class NotificationService {
     );
 
     return results;
+  }
+
+  /**
+   * Send bulk notification with user filters (admin use)
+   * Resolves filters to user IDs, then sends notifications
+   * @param {Object} options - Bulk notification options
+   * @param {string} options.title - Notification title
+   * @param {string} options.message - Notification message
+   * @param {string} options.type - Notification category
+   * @param {Array} options.channels - Delivery channels
+   * @param {Object} options.filters - User filters (role, isDriver, isVerified)
+   * @param {Object} options.metadata - Additional metadata
+   * @returns {Promise<Object>} Send results with recipientCount
+   */
+  async sendAdminBulkNotification(options) {
+    const { title, message, type = 'system', channels = ['in_app'], filters = {}, metadata = {} } = options;
+
+    logger.info('Sending admin bulk notification', {
+      action: 'ADMIN_BULK_NOTIFICATION',
+      type,
+      filters,
+    });
+
+    // Resolve filters to user list
+    const users = await this.userRepository.findAll(filters);
+    const userIds = users.map((u) => u.userId);
+
+    if (userIds.length === 0) {
+      return { recipientCount: 0 };
+    }
+
+    // Send in-app notifications in bulk
+    if (channels.includes('in_app')) {
+      await this.sendBulkNotification(userIds, {
+        title,
+        message,
+        category: type,
+        data: metadata,
+      });
+    }
+
+    return { recipientCount: userIds.length };
   }
 
   // ==================== Notification Preferences ====================

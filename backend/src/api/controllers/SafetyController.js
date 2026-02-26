@@ -78,7 +78,7 @@ class SafetyController {
       const { userId } = req.user;
       const { resolution } = req.body || {};
 
-      const alert = await this.safetyService.resolveSOSAlert(alertId, userId, resolution);
+      const alert = await this.safetyService.resolveSOS(alertId, userId, resolution);
 
       logger.info('SOS alert resolved', { userId, alertId });
 
@@ -136,7 +136,7 @@ class SafetyController {
    */
   async shareLocation(req, res, next) {
     try {
-      const { userId } = req.user.userId;
+      const { userId } = req.user;
       const { bookingId, location } = req.body;
 
       const sharing = await this.safetyService.startLocationSharing(userId, {
@@ -196,7 +196,7 @@ class SafetyController {
    */
   async updateLocation(req, res, next) {
     try {
-      const { userId } = req.user.userId;
+      const { userId } = req.user;
       const { bookingId, location } = req.body;
 
       await this.safetyService.updateLocation(userId, bookingId, location);
@@ -215,7 +215,7 @@ class SafetyController {
    */
   async reportIncident(req, res, next) {
     try {
-      const { userId } = req.user.userId;
+      const { userId } = req.user;
       const { bookingId, type, description, severity } = req.body;
 
       const incident = await this.safetyService.reportIncident(userId, {

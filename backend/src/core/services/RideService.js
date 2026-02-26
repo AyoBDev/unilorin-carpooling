@@ -488,6 +488,57 @@ class RideService {
   }
 
   /**
+   * Get available rides (general listing)
+   * @param {Object} options - Filter options
+   * @returns {Promise<Object>} Available rides with pagination
+   */
+  async getAvailableRides(options = {}) {
+    try {
+      const { date, page = 1, limit = 20 } = options;
+
+      const criteria = {
+        status: [RIDE_STATUS.ACTIVE],
+      };
+
+      if (date) {
+        criteria.departureDate = date;
+      }
+
+      let rides = await this.rideRepository.search(criteria);
+
+      // Only include future rides
+      rides = rides.filter((r) => !isExpired(r.departureDateTime));
+
+      // Sort by departure time
+      rides.sort((a, b) => new Date(a.departureDateTime) - new Date(b.departureDateTime));
+
+      // Paginate
+      const totalCount = rides.length;
+      const totalPages = Math.ceil(totalCount / limit);
+      const startIndex = (page - 1) * limit;
+      const paginatedRides = rides.slice(startIndex, startIndex + limit);
+
+      return {
+        rides: paginatedRides,
+        pagination: {
+          page,
+          limit,
+          totalCount,
+          totalPages,
+          hasNextPage: page < totalPages,
+          hasPrevPage: page > 1,
+        },
+      };
+    } catch (error) {
+      logger.error('Failed to get available rides', {
+        action: 'AVAILABLE_RIDES_FETCH_FAILED',
+        error: error.message,
+      });
+      throw error;
+    }
+  }
+
+  /**
    * Get ride details by ID
    * @param {string} rideId - Ride ID
    * @param {string} userId - Requesting user ID (for context)
@@ -848,6 +899,32 @@ class RideService {
     }
   }
 
+  /**
+   * Get pickup points for a ride
+   * @param {string} rideId - Ride ID
+   * @returns {Promise<Array>} List of pickup points
+   */
+  async getPickupPoints(rideId) {
+    try {
+      const ride = await this.rideRepository.findById(rideId);
+      if (!ride) {
+        throw new NotFoundError(
+          ERROR_MESSAGES[ERROR_CODES.RIDE_NOT_FOUND],
+          ERROR_CODES.RIDE_NOT_FOUND,
+        );
+      }
+
+      return ride.pickupPoints || [];
+    } catch (error) {
+      logger.error('Failed to get pickup points', {
+        action: 'PICKUP_POINTS_FETCH_FAILED',
+        rideId,
+        error: error.message,
+      });
+      throw error;
+    }
+  }
+
   // ==================== Ride Lifecycle ====================
 
   /**
@@ -975,7 +1052,231 @@ class RideService {
     }
   }
 
+  // ==================== Ride Bookings & Passengers ====================
+
+  /**
+   * Get bookings for a ride (driver view)
+   * @param {string} rideId - Ride ID
+   * @param {string} driverId - Driver ID (for authorization)
+   * @param {Object} filters - Filter options
+   * @returns {Promise<Array>} List of bookings
+   */
+  async getRideBookings(rideId, driverId, filters = {}) {
+    try {
+      const ride = await this.rideRepository.findById(rideId);
+      if (!ride) {
+        throw new NotFoundError(
+          ERROR_MESSAGES[ERROR_CODES.RIDE_NOT_FOUND],
+          ERROR_CODES.RIDE_NOT_FOUND,
+        );
+      }
+
+      if (ride.driverId !== driverId) {
+        throw new ForbiddenError('Not authorized to view ride bookings', ERROR_CODES.FORBIDDEN);
+      }
+
+      let bookings = await this.rideRepository.getRideBookings(rideId);
+
+      // Filter by status if provided
+      if (filters.status) {
+        const statuses = Array.isArray(filters.status) ? filters.status : [filters.status];
+        bookings = bookings.filter((b) => statuses.includes(b.status));
+      }
+
+      return bookings;
+    } catch (error) {
+      logger.error('Failed to get ride bookings', {
+        action: 'RIDE_BOOKINGS_FETCH_FAILED',
+        rideId,
+        error: error.message,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get confirmed passengers for a ride (driver view)
+   * @param {string} rideId - Ride ID
+   * @param {string} driverId - Driver ID (for authorization)
+   * @returns {Promise<Array>} List of confirmed passengers
+   */
+  async getRidePassengers(rideId, driverId) {
+    try {
+      const ride = await this.rideRepository.findById(rideId);
+      if (!ride) {
+        throw new NotFoundError(
+          ERROR_MESSAGES[ERROR_CODES.RIDE_NOT_FOUND],
+          ERROR_CODES.RIDE_NOT_FOUND,
+        );
+      }
+
+      if (ride.driverId !== driverId) {
+        throw new ForbiddenError('Not authorized to view ride passengers', ERROR_CODES.FORBIDDEN);
+      }
+
+      const bookings = await this.rideRepository.getRideBookings(rideId);
+      const confirmedBookings = bookings.filter((b) => b.status === 'confirmed');
+
+      // Enrich with passenger details
+      const passengers = await Promise.all(
+        confirmedBookings.map(async (booking) => {
+          const user = await this.userRepository.findById(booking.passengerId);
+          return {
+            bookingId: booking.bookingId,
+            passengerId: booking.passengerId,
+            firstName: user?.firstName,
+            lastName: user?.lastName,
+            phone: user?.phone,
+            profilePhoto: user?.profilePhoto,
+            seats: booking.seats,
+            pickupPointId: booking.pickupPointId,
+            bookedAt: booking.createdAt,
+          };
+        }),
+      );
+
+      return passengers;
+    } catch (error) {
+      logger.error('Failed to get ride passengers', {
+        action: 'RIDE_PASSENGERS_FETCH_FAILED',
+        rideId,
+        error: error.message,
+      });
+      throw error;
+    }
+  }
+
+  // ==================== Popular Routes ====================
+
+  /**
+   * Get popular routes based on ride history
+   * @param {number} limit - Maximum number of routes to return
+   * @returns {Promise<Array>} List of popular routes
+   */
+  async getPopularRoutes(limit = 10) {
+    try {
+      // Get recent completed rides to determine popular routes
+      const completedRides = await this.rideRepository.search({
+        status: [RIDE_STATUS.COMPLETED],
+      });
+
+      // Aggregate routes by start/end location pairs
+      const routeMap = {};
+      for (const ride of completedRides) {
+        const startName = ride.startLocation?.name || ride.startLocation?.address || 'Unknown';
+        const endName = ride.endLocation?.name || ride.endLocation?.address || 'Unknown';
+        const routeKey = `${startName}::${endName}`;
+
+        if (!routeMap[routeKey]) {
+          routeMap[routeKey] = {
+            startLocation: ride.startLocation,
+            endLocation: ride.endLocation,
+            rideCount: 0,
+            averagePrice: 0,
+            totalPrice: 0,
+          };
+        }
+
+        routeMap[routeKey].rideCount += 1;
+        routeMap[routeKey].totalPrice += ride.pricePerSeat || 0;
+      }
+
+      // Calculate averages and sort by popularity
+      const routes = Object.values(routeMap)
+        .map((route) => ({
+          ...route,
+          averagePrice: route.rideCount > 0 ? Math.round(route.totalPrice / route.rideCount) : 0,
+          totalPrice: undefined,
+        }))
+        .sort((a, b) => b.rideCount - a.rideCount)
+        .slice(0, limit);
+
+      return routes;
+    } catch (error) {
+      logger.error('Failed to get popular routes', {
+        action: 'POPULAR_ROUTES_FETCH_FAILED',
+        error: error.message,
+      });
+      throw error;
+    }
+  }
+
   // ==================== Recurring Rides ====================
+
+  /**
+   * Create a recurring ride schedule
+   * @param {string} driverId - Driver ID
+   * @param {Object} scheduleData - Recurring ride schedule data
+   * @returns {Promise<Object>} Created recurring schedule
+   */
+  async createRecurringRide(driverId, scheduleData) {
+    logger.info('Creating recurring ride schedule', {
+      action: 'RECURRING_RIDE_CREATED',
+      driverId,
+    });
+
+    try {
+      // Create the initial ride first
+      const result = await this.createRide(driverId, {
+        ...scheduleData,
+        isRecurring: true,
+      });
+
+      return {
+        scheduleId: result.ride.rideId,
+        parentRide: result.ride,
+        instances: result.recurringRides || [],
+        message: result.message,
+      };
+    } catch (error) {
+      logger.error('Failed to create recurring ride', {
+        action: 'RECURRING_RIDE_CREATE_FAILED',
+        driverId,
+        error: error.message,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get recurring ride schedules for a driver
+   * @param {string} driverId - Driver ID
+   * @returns {Promise<Array>} List of recurring ride schedules
+   */
+  async getRecurringRidesByDriver(driverId) {
+    try {
+      const rides = await this.rideRepository.findByDriver(driverId);
+
+      // Filter to recurring parent rides only
+      const recurringRides = rides.filter(
+        (r) => r.isRecurring && !r.isRecurringInstance && r.status !== RIDE_STATUS.CANCELLED,
+      );
+
+      // Enrich with instance counts
+      const schedules = await Promise.all(
+        recurringRides.map(async (ride) => {
+          const instances = await this.rideRepository.findRecurringInstances(ride.rideId);
+          return {
+            scheduleId: ride.rideId,
+            ride,
+            recurringDays: ride.recurringDays,
+            recurringEndDate: ride.recurringEndDate,
+            instanceCount: instances.length,
+            activeInstances: instances.filter((i) => i.status === RIDE_STATUS.ACTIVE).length,
+          };
+        }),
+      );
+
+      return schedules;
+    } catch (error) {
+      logger.error('Failed to get recurring rides for driver', {
+        action: 'RECURRING_RIDES_BY_DRIVER_FETCH_FAILED',
+        driverId,
+        error: error.message,
+      });
+      throw error;
+    }
+  }
 
   /**
    * Get recurring ride instances

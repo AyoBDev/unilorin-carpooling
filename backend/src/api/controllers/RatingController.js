@@ -133,7 +133,8 @@ class RatingController {
       const { userId } = req.user;
       const { page = 1, limit = 20 } = req.query;
 
-      const result = await this.ratingService.getRatingsGiven(userId, {
+      const result = await this.ratingService.getUserRatings(userId, {
+        type: 'given',
         page: parseInt(page, 10),
         limit: parseInt(limit, 10),
       });
@@ -153,7 +154,8 @@ class RatingController {
       const { userId } = req.user;
       const { ratingType, page = 1, limit = 20 } = req.query;
 
-      const result = await this.ratingService.getRatingsReceived(userId, {
+      const result = await this.ratingService.getUserRatings(userId, {
+        type: 'received',
         ratingType,
         page: parseInt(page, 10),
         limit: parseInt(limit, 10),
@@ -173,7 +175,7 @@ class RatingController {
     try {
       const { userId } = req.user;
 
-      const analytics = await this.ratingService.getRatingAnalytics(userId);
+      const analytics = await this.ratingService.getUserRatingSummary(userId);
 
       return success(res, 'Rating analytics', { analytics });
     } catch (error) {

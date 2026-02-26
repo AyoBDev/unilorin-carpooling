@@ -956,6 +956,25 @@ class AuthService {
     }
   }
 
+  /**
+   * Get current authenticated user profile
+   * @param {string} userId - User ID
+   * @returns {Promise<Object>} Sanitized user data
+   */
+  async getCurrentUser(userId) {
+    const user = await this.userRepository.findById(userId);
+    if (!user) {
+      throw new NotFoundError('User not found', ERROR_CODES.USER_NOT_FOUND);
+    }
+    if (!user.isActive) {
+      throw new ForbiddenError(
+        ERROR_MESSAGES[ERROR_CODES.AUTH_ACCOUNT_DISABLED],
+        ERROR_CODES.AUTH_ACCOUNT_DISABLED,
+      );
+    }
+    return this._sanitizeUser(user);
+  }
+
   // ==================== Private Methods ====================
 
   /**

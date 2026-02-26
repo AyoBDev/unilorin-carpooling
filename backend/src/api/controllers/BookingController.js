@@ -107,7 +107,7 @@ class BookingController {
         sortOrder = 'desc',
       } = req.query;
 
-      const result = await this.bookingService.getUserBookings(userId, {
+      const result = await this.bookingService.getPassengerBookings(userId, {
         status,
         role,
         page: parseInt(page, 10),
@@ -154,7 +154,7 @@ class BookingController {
   async confirmBooking(req, res, next) {
     try {
       const { bookingId } = req.params;
-      const { driverId } = req.user;
+      const driverId = req.user.userId;
 
       const booking = await this.bookingService.confirmBooking(bookingId, driverId);
 
@@ -180,7 +180,7 @@ class BookingController {
       const verification = await this.bookingService.getVerificationCode(bookingId, passengerId);
 
       return success(res, 'Verification code retrieved', {
-        verificationCode: verification.code,
+        verificationCode: verification.verificationCode,
         expiresAt: verification.expiresAt,
         instructions: 'Show this code to the driver when boarding.',
       });
@@ -199,7 +199,7 @@ class BookingController {
       const driverId = req.user.userId;
       const { verificationCode } = req.body;
 
-      const result = await this.bookingService.verifyPassenger(
+      const result = await this.bookingService.startRideForBooking(
         bookingId,
         driverId,
         verificationCode,
@@ -223,7 +223,7 @@ class BookingController {
       const driverId = req.user.userId;
       const { verificationCode } = req.body;
 
-      const booking = await this.bookingService.startBooking(bookingId, driverId, verificationCode);
+      const booking = await this.bookingService.startRideForBooking(bookingId, driverId, verificationCode);
 
       logger.info('Booking ride started', { driverId, bookingId });
 

@@ -197,7 +197,7 @@ class RideController {
       const driverId = req.user.userId;
       const { status, page = 1, limit = 20 } = req.query;
 
-      const result = await this.rideService.getDriverRides(driverId, {
+      const result = await this.rideService.getRidesByDriver(driverId, {
         status,
         page: parseInt(page, 10),
         limit: parseInt(limit, 10),
@@ -280,7 +280,7 @@ class RideController {
       const { rideId, pickupPointId } = req.params;
       const driverId = req.user.userId;
 
-      await this.rideService.removePickupPoint(rideId, driverId, pickupPointId);
+      await this.rideService.removePickupPoint(rideId, pickupPointId, driverId);
 
       return success(res, 'Pickup point removed');
     } catch (error) {
@@ -350,7 +350,7 @@ class RideController {
     try {
       const driverId = req.user.userId;
 
-      const schedules = await this.rideService.getRecurringRides(driverId);
+      const schedules = await this.rideService.getRecurringRidesByDriver(driverId);
 
       return success(res, 'Recurring ride schedules', { schedules });
     } catch (error) {
@@ -367,7 +367,7 @@ class RideController {
       const { scheduleId } = req.params;
       const driverId = req.user.userId;
 
-      await this.rideService.cancelRecurringRide(scheduleId, driverId);
+      await this.rideService.cancelRecurringRides(scheduleId, driverId);
 
       return success(res, 'Recurring ride schedule cancelled');
     } catch (error) {

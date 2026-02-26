@@ -300,7 +300,7 @@ class AuthController {
     try {
       const { userId } = req.user;
 
-      await this.authService.logoutAllSessions(userId);
+      await this.authService.logout(userId, null, true);
 
       logger.info('User logged out from all devices', { userId });
 
@@ -320,7 +320,7 @@ class AuthController {
    */
   async getMe(req, res, next) {
     try {
-      const { userId } = req.user.userId;
+      const { userId } = req.user;
 
       const user = await this.authService.getCurrentUser(userId);
 
@@ -344,7 +344,7 @@ class AuthController {
       const { userId } = req.user;
       const { phone } = req.body;
 
-      await this.authService.sendOTP(userId, phone);
+      await this.authService.generateOTP(userId, 'phone_verification');
 
       return success(res, 'OTP sent to your phone number.');
     } catch (error) {

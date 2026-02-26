@@ -999,6 +999,149 @@ class BookingService {
     }
   }
 
+  // ==================== History & Statistics ====================
+
+  /**
+   * Get upcoming bookings for a user
+   * @param {string} userId - User ID
+   * @param {Object} options - Filter options
+   * @returns {Promise<Array>} Upcoming bookings
+   */
+  async getUpcomingBookings(userId, options = {}) {
+    const { role = 'passenger', limit = 10 } = options;
+
+    try {
+      let bookings;
+      if (role === 'driver') {
+        bookings = await this.bookingRepository.findByDriver(userId);
+      } else {
+        bookings = await this.bookingRepository.findByPassenger(userId);
+      }
+
+      // Filter to upcoming only (not departed yet) and active statuses
+      const upcomingBookings = bookings
+        .filter(
+          (b) =>
+            ['pending', 'confirmed'].includes(b.status) &&
+            !isExpired(b.rideDepartureDateTime),
+        )
+        .sort((a, b) => new Date(a.rideDepartureDateTime) - new Date(b.rideDepartureDateTime))
+        .slice(0, limit);
+
+      return upcomingBookings.map((b) => this._sanitizeBooking(b));
+    } catch (error) {
+      logger.error('Failed to get upcoming bookings', {
+        action: 'UPCOMING_BOOKINGS_FETCH_FAILED',
+        userId,
+        error: error.message,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get past bookings for a user
+   * @param {string} userId - User ID
+   * @param {Object} options - Filter options
+   * @returns {Promise<Object>} Past bookings with pagination
+   */
+  async getPastBookings(userId, options = {}) {
+    const { role = 'passenger', page = 1, limit = 20 } = options;
+
+    try {
+      let bookings;
+      if (role === 'driver') {
+        bookings = await this.bookingRepository.findByDriver(userId);
+      } else {
+        bookings = await this.bookingRepository.findByPassenger(userId);
+      }
+
+      // Filter to past bookings (completed, cancelled, no_show, or departed)
+      const pastBookings = bookings
+        .filter(
+          (b) =>
+            ['completed', 'cancelled', 'no_show'].includes(b.status) ||
+            isExpired(b.rideDepartureDateTime),
+        )
+        .sort((a, b) => new Date(b.rideDepartureDateTime) - new Date(a.rideDepartureDateTime));
+
+      // Paginate
+      const totalCount = pastBookings.length;
+      const totalPages = Math.ceil(totalCount / limit);
+      const startIndex = (page - 1) * limit;
+      const paginatedBookings = pastBookings.slice(startIndex, startIndex + limit);
+
+      return {
+        bookings: paginatedBookings.map((b) => this._sanitizeBooking(b)),
+        pagination: {
+          page,
+          limit,
+          totalCount,
+          totalPages,
+        },
+      };
+    } catch (error) {
+      logger.error('Failed to get past bookings', {
+        action: 'PAST_BOOKINGS_FETCH_FAILED',
+        userId,
+        error: error.message,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get booking statistics for a user
+   * @param {string} userId - User ID
+   * @param {string} role - 'passenger' or 'driver'
+   * @param {string} period - Time period (e.g., '30days', '90days', 'all')
+   * @returns {Promise<Object>} Booking statistics
+   */
+  async getBookingStatistics(userId, role = 'passenger', period = '30days') {
+    try {
+      let bookings;
+      if (role === 'driver') {
+        bookings = await this.bookingRepository.findByDriver(userId);
+      } else {
+        bookings = await this.bookingRepository.findByPassenger(userId);
+      }
+
+      // Filter by period
+      const periodDays = period === 'all' ? null : parseInt(period, 10) || 30;
+      if (periodDays) {
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - periodDays);
+        bookings = bookings.filter((b) => new Date(b.createdAt) >= cutoff);
+      }
+
+      const totalBookings = bookings.length;
+      const completed = bookings.filter((b) => b.status === BOOKING_STATUS.COMPLETED);
+      const cancelled = bookings.filter((b) => b.status === BOOKING_STATUS.CANCELLED);
+      const noShows = bookings.filter((b) => b.status === BOOKING_STATUS.NO_SHOW);
+
+      const totalSpent = completed.reduce((sum, b) => sum + (b.totalAmount || 0), 0);
+      const completionRate = totalBookings > 0 ? (completed.length / totalBookings) * 100 : 0;
+
+      return {
+        period,
+        totalBookings,
+        completedBookings: completed.length,
+        cancelledBookings: cancelled.length,
+        noShowBookings: noShows.length,
+        totalAmount: totalSpent,
+        currency: 'NGN',
+        completionRate: Math.round(completionRate * 100) / 100,
+      };
+    } catch (error) {
+      logger.error('Failed to get booking statistics', {
+        action: 'BOOKING_STATISTICS_FETCH_FAILED',
+        userId,
+        error: error.message,
+      });
+      throw error;
+    }
+  }
+
   // ==================== Availability Check ====================
 
   /**

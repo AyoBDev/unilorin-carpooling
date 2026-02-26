@@ -614,6 +614,394 @@ class ReportingService {
     }
   }
 
+  // ==================== Driver Earnings ====================
+
+  /**
+   * Get driver earnings summary for a given period
+   * @param {string} driverId - Driver ID
+   * @param {string} period - Period string ('today', '7days', '30days', 'all')
+   * @returns {Promise<Object>} Earnings summary
+   */
+  async getDriverEarnings(driverId, period = '30days') {
+    logger.info('Generating driver earnings', {
+      action: 'DRIVER_EARNINGS',
+      driverId,
+      period,
+    });
+
+    try {
+      const periodMap = {
+        today: REPORT_PERIOD.TODAY,
+        '7days': REPORT_PERIOD.THIS_WEEK,
+        '30days': REPORT_PERIOD.THIS_MONTH,
+        all: REPORT_PERIOD.THIS_MONTH, // fallback; all uses wide range
+      };
+
+      const mappedPeriod = periodMap[period] || REPORT_PERIOD.THIS_MONTH;
+      const { start, end } = this._getDateRange(mappedPeriod);
+
+      const bookings = await this.bookingRepository.findByDriverAndDateRange(
+        driverId,
+        formatDate(start),
+        formatDate(end),
+      );
+
+      const completedBookings = bookings.filter((b) => b.status === 'completed');
+      const confirmedBookings = completedBookings.filter((b) => b.paymentStatus === 'confirmed');
+
+      const totalEarnings = confirmedBookings.reduce(
+        (sum, b) => sum + (b.amountReceived || b.totalAmount),
+        0,
+      );
+
+      const days = getDaysBetween(start, end) || 1;
+
+      return {
+        period,
+        start: formatDateReadable(start),
+        end: formatDateReadable(end),
+        totalEarnings,
+        totalRides: completedBookings.length,
+        totalPassengers: completedBookings.reduce((sum, b) => sum + b.seats, 0),
+        averagePerRide:
+          completedBookings.length > 0 ? Math.round(totalEarnings / completedBookings.length) : 0,
+        averagePerDay: Math.round(totalEarnings / days),
+        pendingPayments: completedBookings
+          .filter((b) => b.paymentStatus === 'pending')
+          .reduce((sum, b) => sum + b.totalAmount, 0),
+      };
+    } catch (error) {
+      logger.error('Failed to generate driver earnings', {
+        action: 'DRIVER_EARNINGS_FAILED',
+        driverId,
+        error: error.message,
+      });
+      throw error;
+    }
+  }
+
+  // ==================== Admin: Daily Cash Collection ====================
+
+  /**
+   * Get platform-wide daily cash collection report (admin)
+   * @param {Object} options - Query options
+   * @returns {Promise<Object>} Daily cash collection report
+   */
+  async getDailyCashCollection(options = {}) {
+    const { date, startDate, endDate } = options;
+
+    const reportDate = date ? parseDate(date) : now();
+    const start = startDate ? startOfDay(parseDate(startDate)) : startOfDay(reportDate);
+    const end = endDate ? endOfDay(parseDate(endDate)) : endOfDay(reportDate);
+
+    logger.info('Generating daily cash collection', {
+      action: 'DAILY_CASH_COLLECTION',
+      start: formatDate(start),
+      end: formatDate(end),
+    });
+
+    try {
+      const bookings = await this.bookingRepository.findByDateRange(
+        formatDate(start),
+        formatDate(end),
+      );
+
+      const completedBookings = bookings.filter((b) => b.status === 'completed');
+      const confirmedBookings = completedBookings.filter((b) => b.paymentStatus === 'confirmed');
+
+      const totalExpected = completedBookings.reduce((sum, b) => sum + b.totalAmount, 0);
+      const totalCollected = confirmedBookings.reduce(
+        (sum, b) => sum + (b.amountReceived || b.totalAmount),
+        0,
+      );
+      const totalPending = completedBookings
+        .filter((b) => b.paymentStatus === 'pending')
+        .reduce((sum, b) => sum + b.totalAmount, 0);
+
+      return {
+        date: formatDateReadable(start),
+        generatedAt: formatDate(now()),
+        summary: {
+          totalBookings: completedBookings.length,
+          totalExpected,
+          totalCollected,
+          totalPending,
+          collectionRate: totalExpected > 0 ? Math.round((totalCollected / totalExpected) * 100) : 0,
+        },
+        pendingPayments: completedBookings
+          .filter((b) => b.paymentStatus === 'pending')
+          .map((b) => ({
+            bookingId: b.bookingId,
+            bookingReference: b.bookingReference,
+            amount: b.totalAmount,
+            driverId: b.driverId,
+          })),
+      };
+    } catch (error) {
+      logger.error('Failed to generate daily cash collection', {
+        action: 'DAILY_CASH_COLLECTION_FAILED',
+        error: error.message,
+      });
+      throw error;
+    }
+  }
+
+  // ==================== Admin: Driver Leaderboard ====================
+
+  /**
+   * Get driver leaderboard
+   * @param {Object} options - Query options
+   * @returns {Promise<Array>} Driver leaderboard
+   */
+  async getDriverLeaderboard(options = {}) {
+    const { period = '30days', sortBy = 'totalRides', limit = 20 } = options;
+
+    const periodMap = {
+      '7days': REPORT_PERIOD.THIS_WEEK,
+      '30days': REPORT_PERIOD.THIS_MONTH,
+    };
+    const mappedPeriod = periodMap[period] || REPORT_PERIOD.THIS_MONTH;
+    const { start, end } = this._getDateRange(mappedPeriod);
+
+    logger.info('Generating driver leaderboard', {
+      action: 'DRIVER_LEADERBOARD',
+      period,
+      sortBy,
+    });
+
+    try {
+      const rides = await this.rideRepository.findByDateRange(formatDate(start), formatDate(end));
+      const completedRides = rides.filter((r) => r.status === 'completed');
+
+      // Group by driver
+      const driverMap = {};
+      for (const ride of completedRides) {
+        if (!driverMap[ride.driverId]) {
+          driverMap[ride.driverId] = { driverId: ride.driverId, totalRides: 0, totalSeats: 0 };
+        }
+        driverMap[ride.driverId].totalRides += 1;
+        driverMap[ride.driverId].totalSeats += ride.bookedSeats || 0;
+      }
+
+      // Get bookings for earnings
+      const bookings = await this.bookingRepository.findByDateRange(
+        formatDate(start),
+        formatDate(end),
+      );
+      const completedBookings = bookings.filter(
+        (b) => b.status === 'completed' && b.paymentStatus === 'confirmed',
+      );
+
+      for (const booking of completedBookings) {
+        if (driverMap[booking.driverId]) {
+          driverMap[booking.driverId].earnings =
+            (driverMap[booking.driverId].earnings || 0) + (booking.amountReceived || booking.totalAmount);
+        }
+      }
+
+      let leaderboard = Object.values(driverMap);
+
+      // Sort
+      const sortFns = {
+        totalRides: (a, b) => b.totalRides - a.totalRides,
+        earnings: (a, b) => (b.earnings || 0) - (a.earnings || 0),
+        rating: (a, b) => (b.averageRating || 0) - (a.averageRating || 0),
+      };
+      leaderboard.sort(sortFns[sortBy] || sortFns.totalRides);
+      leaderboard = leaderboard.slice(0, limit);
+
+      // Enrich with user info
+      const enriched = await Promise.all(
+        leaderboard.map(async (entry, index) => {
+          const user = await this.userRepository.findById(entry.driverId);
+          return {
+            rank: index + 1,
+            ...entry,
+            driverName: user ? `${user.firstName} ${user.lastName}` : 'Unknown',
+            averageRating: user?.averageRating || 0,
+          };
+        }),
+      );
+
+      return enriched;
+    } catch (error) {
+      logger.error('Failed to generate driver leaderboard', {
+        action: 'DRIVER_LEADERBOARD_FAILED',
+        error: error.message,
+      });
+      throw error;
+    }
+  }
+
+  // ==================== Admin: User Growth ====================
+
+  /**
+   * Get user growth report
+   * @param {Object} options - Query options
+   * @returns {Promise<Object>} User growth data
+   */
+  async getUserGrowth(options = {}) {
+    const { startDate, endDate, groupBy = 'week' } = options;
+    const { start, end } = this._getDateRange(
+      startDate && endDate ? REPORT_PERIOD.CUSTOM : REPORT_PERIOD.THIS_MONTH,
+      startDate,
+      endDate,
+    );
+
+    logger.info('Generating user growth report', {
+      action: 'USER_GROWTH',
+      groupBy,
+    });
+
+    try {
+      const userStats = await this.userRepository.getPlatformStatistics();
+
+      return {
+        period: {
+          start: formatDateReadable(start),
+          end: formatDateReadable(end),
+        },
+        generatedAt: formatDate(now()),
+        totalUsers: userStats.totalUsers || 0,
+        totalDrivers: userStats.totalDrivers || 0,
+        newUsersInPeriod: userStats.newUsersInPeriod || 0,
+        groupBy,
+      };
+    } catch (error) {
+      logger.error('Failed to generate user growth report', {
+        action: 'USER_GROWTH_FAILED',
+        error: error.message,
+      });
+      throw error;
+    }
+  }
+
+  // ==================== Admin: Ride Analytics ====================
+
+  /**
+   * Get ride analytics
+   * @param {Object} options - Query options
+   * @returns {Promise<Object>} Ride analytics
+   */
+  async getRideAnalytics(options = {}) {
+    const { startDate, endDate, groupBy = 'day' } = options;
+    const { start, end } = this._getDateRange(
+      startDate && endDate ? REPORT_PERIOD.CUSTOM : REPORT_PERIOD.THIS_MONTH,
+      startDate,
+      endDate,
+    );
+
+    logger.info('Generating ride analytics', {
+      action: 'RIDE_ANALYTICS',
+      groupBy,
+    });
+
+    try {
+      const rides = await this.rideRepository.findByDateRange(formatDate(start), formatDate(end));
+      const completedRides = rides.filter((r) => r.status === 'completed');
+      const cancelledRides = rides.filter((r) => r.status === 'cancelled');
+
+      const peakHours = this._analyzePeakHours(completedRides);
+      const popularRoutes = this._analyzePopularRoutes(completedRides);
+
+      return {
+        period: {
+          start: formatDateReadable(start),
+          end: formatDateReadable(end),
+        },
+        generatedAt: formatDate(now()),
+        groupBy,
+        summary: {
+          totalRides: rides.length,
+          completed: completedRides.length,
+          cancelled: cancelledRides.length,
+          completionRate:
+            rides.length > 0 ? Math.round((completedRides.length / rides.length) * 100) : 0,
+          averageSeatsOffered:
+            rides.length > 0
+              ? Math.round(rides.reduce((sum, r) => sum + (r.totalSeats || 0), 0) / rides.length)
+              : 0,
+        },
+        peakHours,
+        popularRoutes,
+      };
+    } catch (error) {
+      logger.error('Failed to generate ride analytics', {
+        action: 'RIDE_ANALYTICS_FAILED',
+        error: error.message,
+      });
+      throw error;
+    }
+  }
+
+  // ==================== Admin: Revenue Report ====================
+
+  /**
+   * Get revenue report
+   * @param {Object} options - Query options
+   * @returns {Promise<Object>} Revenue report
+   */
+  async getRevenueReport(options = {}) {
+    const { startDate, endDate, groupBy = 'day' } = options;
+    const { start, end } = this._getDateRange(
+      startDate && endDate ? REPORT_PERIOD.CUSTOM : REPORT_PERIOD.THIS_MONTH,
+      startDate,
+      endDate,
+    );
+
+    logger.info('Generating revenue report', {
+      action: 'REVENUE_REPORT',
+      groupBy,
+    });
+
+    try {
+      const bookings = await this.bookingRepository.findByDateRange(
+        formatDate(start),
+        formatDate(end),
+      );
+
+      const completedBookings = bookings.filter((b) => b.status === 'completed');
+      const confirmedBookings = completedBookings.filter((b) => b.paymentStatus === 'confirmed');
+
+      const totalRevenue = confirmedBookings.reduce(
+        (sum, b) => sum + (b.amountReceived || b.totalAmount),
+        0,
+      );
+      const totalPending = completedBookings
+        .filter((b) => b.paymentStatus === 'pending')
+        .reduce((sum, b) => sum + b.totalAmount, 0);
+      const totalWaived = completedBookings
+        .filter((b) => b.paymentStatus === 'waived')
+        .reduce((sum, b) => sum + b.totalAmount, 0);
+
+      const days = getDaysBetween(start, end) || 1;
+
+      return {
+        period: {
+          start: formatDateReadable(start),
+          end: formatDateReadable(end),
+        },
+        generatedAt: formatDate(now()),
+        groupBy,
+        summary: {
+          totalRevenue,
+          totalPending,
+          totalWaived,
+          averagePerDay: Math.round(totalRevenue / days),
+          averagePerBooking:
+            confirmedBookings.length > 0 ? Math.round(totalRevenue / confirmedBookings.length) : 0,
+          totalTransactions: confirmedBookings.length,
+        },
+      };
+    } catch (error) {
+      logger.error('Failed to generate revenue report', {
+        action: 'REVENUE_REPORT_FAILED',
+        error: error.message,
+      });
+      throw error;
+    }
+  }
+
   // ==================== Export Reports ====================
 
   /**

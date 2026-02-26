@@ -684,6 +684,91 @@ class RatingService {
     }
   }
 
+  // ==================== Unrated & Reliability ====================
+
+  /**
+   * Get bookings that the user has not yet rated
+   * @param {string} userId - User ID
+   * @returns {Promise<Array>} Unrated bookings
+   */
+  async getUnratedBookings(userId) {
+    try {
+      // Get completed bookings for this user (as passenger or driver)
+      const bookings = await this.bookingRepository.findByUser(userId);
+      const completedBookings = bookings.filter((b) => b.status === 'completed');
+
+      // Get ratings this user has given
+      const ratingsGiven = await this.ratingRepository.findByRater(userId);
+      const ratedBookingIds = new Set(ratingsGiven.map((r) => r.bookingId));
+
+      // Filter to bookings not yet rated and still within rating window
+      const unrated = completedBookings.filter((b) => {
+        if (ratedBookingIds.has(b.bookingId)) return false;
+        const deadline = addDays(b.completedAt, RATING_CONFIG.ratingWindowDays);
+        return !isExpired(deadline);
+      });
+
+      return unrated.map((b) => ({
+        bookingId: b.bookingId,
+        bookingReference: b.bookingReference,
+        rideId: b.rideId,
+        completedAt: b.completedAt,
+        ratingDeadline: formatDate(addDays(b.completedAt, RATING_CONFIG.ratingWindowDays)),
+        role: b.passengerId === userId ? 'passenger' : 'driver',
+      }));
+    } catch (error) {
+      logger.error('Failed to get unrated bookings', {
+        action: 'UNRATED_BOOKINGS_GET_FAILED',
+        userId,
+        error: error.message,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get reliability score for a user based on rating history
+   * @param {string} userId - User ID
+   * @returns {Promise<Object>} Reliability score and breakdown
+   */
+  async getReliabilityScore(userId) {
+    try {
+      const user = await this.userRepository.findById(userId);
+      if (!user) {
+        throw new NotFoundError('User not found', ERROR_CODES.USER_NOT_FOUND);
+      }
+
+      const ratingsReceived = await this.ratingRepository.findByRatedUser(userId);
+      const visibleRatings = ratingsReceived.filter((r) => !r.isHidden);
+
+      const totalRatings = visibleRatings.length;
+      const averageScore =
+        totalRatings > 0
+          ? visibleRatings.reduce((sum, r) => sum + r.score, 0) / totalRatings
+          : 0;
+
+      // Reliability score: weighted combination of average rating and volume
+      // Scale 0-100; more ratings increase confidence
+      const confidenceMultiplier = Math.min(totalRatings / 10, 1); // Full confidence at 10+ ratings
+      const reliabilityScore = Math.round(((averageScore / 5) * 100) * confidenceMultiplier);
+
+      return {
+        userId,
+        reliabilityScore,
+        averageRating: Math.round(averageScore * 10) / 10,
+        totalRatings,
+        confidenceLevel: totalRatings >= 10 ? 'high' : totalRatings >= 5 ? 'medium' : 'low',
+      };
+    } catch (error) {
+      logger.error('Failed to get reliability score', {
+        action: 'RELIABILITY_SCORE_GET_FAILED',
+        userId,
+        error: error.message,
+      });
+      throw error;
+    }
+  }
+
   // ==================== Rating Moderation ====================
 
   /**

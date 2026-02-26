@@ -713,6 +713,294 @@ class SafetyService {
     }
   }
 
+  // ==================== Location Sharing ====================
+
+  /**
+   * Start sharing live location for a booking
+   * @param {string} userId - User ID
+   * @param {Object} data - { bookingId, location }
+   * @returns {Promise<Object>} Sharing session
+   */
+  async startLocationSharing(userId, data) {
+    const { bookingId, location } = data;
+
+    logger.info('Starting location sharing', {
+      action: 'LOCATION_SHARING_STARTED',
+      userId,
+      bookingId,
+    });
+
+    const booking = await this.bookingRepository.findById(bookingId);
+    if (!booking) {
+      throw new NotFoundError('Booking not found', ERROR_CODES.BOOKING_NOT_FOUND);
+    }
+
+    const shareToken = randomUUID();
+    const session = {
+      shareToken,
+      userId,
+      bookingId,
+      rideId: booking.rideId,
+      status: 'active',
+      startedAt: formatDate(now()),
+      lastLocation: location || null,
+      lastUpdateAt: formatDate(now()),
+    };
+
+    this.trackingSessions.set(shareToken, session);
+
+    return {
+      shareToken,
+      shareUrl: `${process.env.APP_URL || ''}/track/${shareToken}`,
+      status: 'active',
+    };
+  }
+
+  /**
+   * Stop location sharing for a user and booking
+   * @param {string} userId - User ID
+   * @param {string} bookingId - Booking ID
+   * @returns {Promise<void>}
+   */
+  async stopLocationSharing(userId, bookingId) {
+    logger.info('Stopping location sharing', {
+      action: 'LOCATION_SHARING_STOPPED',
+      userId,
+      bookingId,
+    });
+
+    // Find session by userId and bookingId
+    for (const [token, session] of this.trackingSessions.entries()) {
+      if (session.userId === userId && session.bookingId === bookingId && session.status === 'active') {
+        session.status = 'stopped';
+        session.stoppedAt = formatDate(now());
+        this.trackingSessions.set(token, session);
+        return;
+      }
+    }
+
+    // No active session found - that's okay
+    logger.debug('No active location sharing session found', { userId, bookingId });
+  }
+
+  /**
+   * Get shared location by share token
+   * @param {string} shareToken - Share token
+   * @returns {Promise<Object>} Location data
+   */
+  async getSharedLocation(shareToken) {
+    const session = this.trackingSessions.get(shareToken);
+    if (!session) {
+      throw new NotFoundError('Shared location not found or expired', ERROR_CODES.SESSION_NOT_FOUND);
+    }
+
+    return {
+      location: session.lastLocation,
+      lastUpdateAt: session.lastUpdateAt,
+      status: session.status,
+    };
+  }
+
+  // ==================== SOS Queries ====================
+
+  /**
+   * Get a specific SOS alert by ID
+   * @param {string} alertId - Alert ID
+   * @param {string} userId - Requesting user ID (for authorization)
+   * @returns {Promise<Object>} Alert details
+   */
+  async getSOSAlert(alertId, userId) {
+    const alert = this.activeAlerts.get(alertId);
+    if (!alert) {
+      throw new NotFoundError('SOS alert not found', ERROR_CODES.ALERT_NOT_FOUND);
+    }
+
+    if (alert.userId !== userId) {
+      throw new ForbiddenError('Not authorized to view this alert', ERROR_CODES.FORBIDDEN);
+    }
+
+    return alert;
+  }
+
+  /**
+   * Get SOS alerts for a specific user
+   * @param {string} userId - User ID
+   * @param {Object} options - { status, page, limit }
+   * @returns {Promise<Object>} Paginated alerts
+   */
+  async getUserSOSAlerts(userId, options = {}) {
+    const { status, page = 1, limit = 20 } = options;
+
+    let alerts = Array.from(this.activeAlerts.values()).filter(
+      (alert) => alert.userId === userId,
+    );
+
+    if (status) {
+      alerts = alerts.filter((alert) => alert.status === status);
+    }
+
+    // Sort by most recent first
+    alerts.sort((a, b) => new Date(b.triggeredAt || b.createdAt) - new Date(a.triggeredAt || a.createdAt));
+
+    const total = alerts.length;
+    const start = (page - 1) * limit;
+    const paginatedAlerts = alerts.slice(start, start + limit);
+
+    return {
+      alerts: paginatedAlerts,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  /**
+   * Get all SOS alerts (admin)
+   * @param {Object} options - { status, page, limit }
+   * @returns {Promise<Object>} Paginated alerts
+   */
+  async getAllSOSAlerts(options = {}) {
+    const { status, page = 1, limit = 20 } = options;
+
+    let alerts = Array.from(this.activeAlerts.values()).filter(
+      (alert) => alert.type === ALERT_TYPE.SOS,
+    );
+
+    if (status) {
+      alerts = alerts.filter((alert) => alert.status === status);
+    }
+
+    alerts.sort((a, b) => new Date(b.triggeredAt || b.createdAt) - new Date(a.triggeredAt || a.createdAt));
+
+    const total = alerts.length;
+    const start = (page - 1) * limit;
+    const paginatedAlerts = alerts.slice(start, start + limit);
+
+    return {
+      alerts: paginatedAlerts,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  // ==================== Incident Reporting ====================
+
+  /**
+   * Report an incident
+   * @param {string} userId - Reporter user ID
+   * @param {Object} incidentData - { bookingId, type, description, severity }
+   * @returns {Promise<Object>} Incident record
+   */
+  async reportIncident(userId, incidentData) {
+    const { bookingId, type, description, severity } = incidentData;
+
+    logger.info('Incident reported', {
+      action: 'INCIDENT_REPORTED',
+      userId,
+      type,
+      severity,
+    });
+
+    const incidentId = randomUUID();
+    const incident = {
+      incidentId,
+      reporterId: userId,
+      bookingId,
+      type,
+      description,
+      severity: severity || 'medium',
+      status: 'pending',
+      createdAt: formatDate(now()),
+    };
+
+    // Persist the incident
+    await this._persistSafetyReport(incident);
+
+    // If critical severity, escalate
+    if (severity === 'critical' || severity === 'high') {
+      await this._escalateSafetyReport(incident);
+    }
+
+    return incident;
+  }
+
+  /**
+   * Get incidents reported by a user
+   * @param {string} userId - User ID
+   * @param {Object} options - { page, limit }
+   * @returns {Promise<Object>} Paginated incidents
+   */
+  async getUserIncidents(userId, options = {}) {
+    const { page = 1, limit = 20 } = options;
+
+    // In production this would query DynamoDB
+    // For now return empty paginated result
+    return {
+      incidents: [],
+      pagination: {
+        page,
+        limit,
+        total: 0,
+        pages: 0,
+      },
+    };
+  }
+
+  /**
+   * Get all incidents (admin)
+   * @param {Object} options - { status, severity, type, page, limit }
+   * @returns {Promise<Object>} Paginated incidents
+   */
+  async getAllIncidents(options = {}) {
+    const { page = 1, limit = 20 } = options;
+
+    // In production this would query DynamoDB with filters
+    return {
+      incidents: [],
+      pagination: {
+        page,
+        limit,
+        total: 0,
+        pages: 0,
+      },
+    };
+  }
+
+  /**
+   * Admin resolve an incident
+   * @param {string} incidentId - Incident ID
+   * @param {string} adminId - Admin user ID
+   * @param {Object} resolutionData - { resolution, action }
+   * @returns {Promise<Object>} Resolved incident
+   */
+  async resolveIncident(incidentId, adminId, resolutionData) {
+    const { resolution, action } = resolutionData;
+
+    logger.info('Incident resolved by admin', {
+      action: 'INCIDENT_RESOLVED',
+      incidentId,
+      adminId,
+      resolutionAction: action,
+    });
+
+    // In production this would update DynamoDB
+    return {
+      incidentId,
+      status: 'resolved',
+      resolvedBy: adminId,
+      resolution,
+      action,
+      resolvedAt: formatDate(now()),
+    };
+  }
+
   // ==================== Private Methods ====================
 
   /**

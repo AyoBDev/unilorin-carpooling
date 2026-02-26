@@ -1171,6 +1171,380 @@ class UserService {
     }
   }
 
+  // ==================== Driver Documents ====================
+
+  /**
+   * Get driver documents
+   * @param {string} userId - User ID
+   * @returns {Promise<Array>} List of driver documents
+   */
+  async getDriverDocuments(userId) {
+    try {
+      const user = await this.userRepository.findById(userId);
+      if (!user) {
+        throw new NotFoundError(
+          ERROR_MESSAGES[ERROR_CODES.USER_NOT_FOUND],
+          ERROR_CODES.USER_NOT_FOUND,
+        );
+      }
+
+      if (!user.isDriver) {
+        throw new ForbiddenError(
+          'User must be registered as a driver',
+          ERROR_CODES.USER_NOT_DRIVER,
+        );
+      }
+
+      const documents = await this.userRepository.getDriverDocuments(userId);
+      return documents;
+    } catch (error) {
+      logger.error('Failed to get driver documents', {
+        action: 'DRIVER_DOCUMENTS_FETCH_FAILED',
+        userId,
+        error: error.message,
+      });
+      throw error;
+    }
+  }
+
+  // ==================== Ride History ====================
+
+  /**
+   * Get ride history for a user
+   * @param {string} userId - User ID
+   * @param {Object} options - Query options (role, page, limit)
+   * @returns {Promise<Object>} Ride history with pagination
+   */
+  async getRideHistory(userId, options = {}) {
+    const { role = 'passenger', page = 1, limit = 20 } = options;
+
+    try {
+      const user = await this.userRepository.findById(userId);
+      if (!user) {
+        throw new NotFoundError(
+          ERROR_MESSAGES[ERROR_CODES.USER_NOT_FOUND],
+          ERROR_CODES.USER_NOT_FOUND,
+        );
+      }
+
+      const result = await this.userRepository.getRideHistory(userId, { role, page, limit });
+
+      return {
+        rides: result.items || [],
+        pagination: {
+          page,
+          limit,
+          total: result.total || 0,
+          totalPages: Math.ceil((result.total || 0) / limit),
+        },
+      };
+    } catch (error) {
+      logger.error('Failed to get ride history', {
+        action: 'RIDE_HISTORY_FETCH_FAILED',
+        userId,
+        error: error.message,
+      });
+      throw error;
+    }
+  }
+
+  // ==================== Preferences ====================
+
+  /**
+   * Get user preferences
+   * @param {string} userId - User ID
+   * @returns {Promise<Object>} User preferences
+   */
+  async getPreferences(userId) {
+    try {
+      const user = await this.userRepository.findById(userId);
+      if (!user) {
+        throw new NotFoundError(
+          ERROR_MESSAGES[ERROR_CODES.USER_NOT_FOUND],
+          ERROR_CODES.USER_NOT_FOUND,
+        );
+      }
+
+      return user.preferences || {
+        notifications: { email: true, push: true, sms: false },
+        ride: { musicAllowed: true, smokingAllowed: false, petsAllowed: false, maxDetour: 10 },
+        privacy: { showPhone: false, showEmail: false },
+      };
+    } catch (error) {
+      logger.error('Failed to get preferences', {
+        action: 'PREFERENCES_FETCH_FAILED',
+        userId,
+        error: error.message,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Update user preferences
+   * @param {string} userId - User ID
+   * @param {Object} preferences - Preference updates
+   * @returns {Promise<Object>} Updated preferences
+   */
+  async updatePreferences(userId, preferences) {
+    try {
+      const user = await this.userRepository.findById(userId);
+      if (!user) {
+        throw new NotFoundError(
+          ERROR_MESSAGES[ERROR_CODES.USER_NOT_FOUND],
+          ERROR_CODES.USER_NOT_FOUND,
+        );
+      }
+
+      const currentPreferences = user.preferences || {};
+      const mergedPreferences = {
+        ...currentPreferences,
+        ...preferences,
+        updatedAt: formatDate(now()),
+      };
+
+      await this.userRepository.updateProfile(userId, { preferences: mergedPreferences });
+
+      return mergedPreferences;
+    } catch (error) {
+      logger.error('Failed to update preferences', {
+        action: 'PREFERENCES_UPDATE_FAILED',
+        userId,
+        error: error.message,
+      });
+      throw error;
+    }
+  }
+
+  // ==================== Admin Operations ====================
+
+  /**
+   * Admin: List users with filters and pagination
+   * @param {Object} filters - Query filters
+   * @returns {Promise<Object>} Users list with pagination
+   */
+  async getUsers(filters = {}) {
+    const { role, isDriver, isVerified, status, search, page = 1, limit = 20, sortBy = 'createdAt', sortOrder = 'desc' } = filters;
+
+    try {
+      const result = await this.userRepository.findAll({
+        role,
+        isDriver,
+        isVerified,
+        status,
+        search,
+        page,
+        limit,
+        sortBy,
+        sortOrder,
+      });
+
+      return {
+        users: (result.items || []).map((user) => this._buildProfileResponse(user)),
+        pagination: {
+          page,
+          limit,
+          total: result.total || 0,
+          totalPages: Math.ceil((result.total || 0) / limit),
+        },
+      };
+    } catch (error) {
+      logger.error('Failed to list users', {
+        action: 'ADMIN_LIST_USERS_FAILED',
+        error: error.message,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Admin: Update a user's profile
+   * @param {string} userId - Target user ID
+   * @param {Object} updates - Fields to update
+   * @param {string} adminId - Admin performing the action
+   * @returns {Promise<Object>} Updated user profile
+   */
+  async adminUpdateUser(userId, updates, adminId) {
+    logger.info('Admin updating user', {
+      action: 'ADMIN_USER_UPDATED',
+      adminId,
+      targetUserId: userId,
+      fields: Object.keys(updates),
+    });
+
+    try {
+      const user = await this.userRepository.findById(userId);
+      if (!user) {
+        throw new NotFoundError(
+          ERROR_MESSAGES[ERROR_CODES.USER_NOT_FOUND],
+          ERROR_CODES.USER_NOT_FOUND,
+        );
+      }
+
+      // Admin-allowed fields
+      const allowedFields = ['role', 'isActive', 'isVerified', 'isDriver', 'driverVerificationStatus'];
+      const filteredUpdates = {};
+      Object.keys(updates).forEach((key) => {
+        if (allowedFields.includes(key)) {
+          filteredUpdates[key] = updates[key];
+        }
+      });
+
+      filteredUpdates.updatedAt = formatDate(now());
+      filteredUpdates.updatedBy = adminId;
+
+      const updatedUser = await this.userRepository.updateProfile(userId, filteredUpdates);
+
+      return this._buildProfileResponse(updatedUser);
+    } catch (error) {
+      logger.error('Admin user update failed', {
+        action: 'ADMIN_USER_UPDATE_FAILED',
+        adminId,
+        targetUserId: userId,
+        error: error.message,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Admin: Verify or reject a driver
+   * @param {string} userId - Driver user ID
+   * @param {string} status - 'verified' or 'rejected'
+   * @param {string} reason - Reason (required for rejection)
+   * @param {string} adminId - Admin performing the action
+   * @returns {Promise<Object>} Updated driver info
+   */
+  async verifyDriver(userId, status, reason, adminId) {
+    logger.info('Admin verifying driver', {
+      action: 'ADMIN_DRIVER_VERIFIED',
+      adminId,
+      targetUserId: userId,
+      status,
+    });
+
+    try {
+      const user = await this.userRepository.findById(userId);
+      if (!user) {
+        throw new NotFoundError(
+          ERROR_MESSAGES[ERROR_CODES.USER_NOT_FOUND],
+          ERROR_CODES.USER_NOT_FOUND,
+        );
+      }
+
+      if (!user.isDriver) {
+        throw new BadRequestError(
+          'User is not registered as a driver',
+          ERROR_CODES.USER_NOT_DRIVER,
+        );
+      }
+
+      const validStatuses = [DRIVER_STATUS.VERIFIED, DRIVER_STATUS.REJECTED];
+      if (!validStatuses.includes(status)) {
+        throw new ValidationError('Invalid verification status', [
+          { field: 'status', message: `Must be one of: ${validStatuses.join(', ')}` },
+        ]);
+      }
+
+      if (status === DRIVER_STATUS.REJECTED && !reason) {
+        throw new ValidationError('Reason is required when rejecting a driver', [
+          { field: 'reason', message: 'Rejection reason is required' },
+        ]);
+      }
+
+      const updateData = {
+        driverVerificationStatus: status,
+        driverVerifiedAt: formatDate(now()),
+        driverVerifiedBy: adminId,
+        updatedAt: formatDate(now()),
+      };
+
+      if (status === DRIVER_STATUS.REJECTED) {
+        updateData.driverRejectionReason = reason;
+      }
+
+      const updatedUser = await this.userRepository.updateProfile(userId, updateData);
+
+      return {
+        userId: updatedUser.userId,
+        isDriver: updatedUser.isDriver,
+        driverVerificationStatus: status,
+        reason: status === DRIVER_STATUS.REJECTED ? reason : undefined,
+      };
+    } catch (error) {
+      logger.error('Driver verification failed', {
+        action: 'ADMIN_DRIVER_VERIFY_FAILED',
+        adminId,
+        targetUserId: userId,
+        error: error.message,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Admin: Suspend or reactivate a user
+   * @param {string} userId - Target user ID
+   * @param {boolean} suspended - Whether to suspend (true) or reactivate (false)
+   * @param {string} reason - Reason for suspension
+   * @param {string} adminId - Admin performing the action
+   * @returns {Promise<Object>} Updated user info
+   */
+  async suspendUser(userId, suspended, reason, adminId) {
+    logger.info(`Admin ${suspended ? 'suspending' : 'reactivating'} user`, {
+      action: suspended ? 'ADMIN_USER_SUSPENDED' : 'ADMIN_USER_REACTIVATED',
+      adminId,
+      targetUserId: userId,
+    });
+
+    try {
+      const user = await this.userRepository.findById(userId);
+      if (!user) {
+        throw new NotFoundError(
+          ERROR_MESSAGES[ERROR_CODES.USER_NOT_FOUND],
+          ERROR_CODES.USER_NOT_FOUND,
+        );
+      }
+
+      if (suspended && !reason) {
+        throw new ValidationError('Reason is required when suspending a user', [
+          { field: 'reason', message: 'Suspension reason is required' },
+        ]);
+      }
+
+      const updateData = {
+        isActive: !suspended,
+        isSuspended: suspended,
+        updatedAt: formatDate(now()),
+        suspendedBy: suspended ? adminId : null,
+        suspendedAt: suspended ? formatDate(now()) : null,
+        suspensionReason: suspended ? reason : null,
+      };
+
+      if (!suspended) {
+        updateData.reactivatedBy = adminId;
+        updateData.reactivatedAt = formatDate(now());
+      }
+
+      const updatedUser = await this.userRepository.updateProfile(userId, updateData);
+
+      // If suspending, invalidate all sessions
+      if (suspended) {
+        await this.userRepository.invalidateAllRefreshTokens(userId);
+      }
+
+      return this._buildProfileResponse(updatedUser);
+    } catch (error) {
+      logger.error('User suspension/reactivation failed', {
+        action: 'ADMIN_USER_SUSPEND_FAILED',
+        adminId,
+        targetUserId: userId,
+        error: error.message,
+      });
+      throw error;
+    }
+  }
+
   // ==================== Private Methods ====================
 
   /**

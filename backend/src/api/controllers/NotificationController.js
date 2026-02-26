@@ -55,9 +55,9 @@ class NotificationController {
         isReadValue = false;
       }
 
-      const result = await this.notificationService.getUserNotifications(userId, {
-        type,
-        isRead: isReadValue,
+      const result = await this.notificationService.getNotifications(userId, {
+        category: type,
+        unreadOnly: isReadValue === false,
         page: parseInt(page, 10),
         limit: parseInt(limit, 10),
       });
@@ -76,9 +76,9 @@ class NotificationController {
     try {
       const { userId } = req.user;
 
-      const count = await this.notificationService.getUnreadCount(userId);
+      const result = await this.notificationService.getUnreadCount(userId);
 
-      return success(res, 'Unread count', { unreadCount: count });
+      return success(res, 'Unread count', { unreadCount: result.unreadCount });
     } catch (error) {
       return next(error);
     }
@@ -129,9 +129,11 @@ class NotificationController {
     try {
       const { userId } = req.user;
 
-      const count = await this.notificationService.markAllAsRead(userId);
+      const result = await this.notificationService.markAllAsRead(userId);
 
-      return success(res, `${count} notifications marked as read`, { updatedCount: count });
+      return success(res, `${result.updatedCount} notifications marked as read`, {
+        updatedCount: result.updatedCount,
+      });
     } catch (error) {
       return next(error);
     }
@@ -160,7 +162,7 @@ class NotificationController {
    */
   async getPreferences(req, res, next) {
     try {
-      const { userId } = req.user.userId;
+      const { userId } = req.user;
 
       const preferences = await this.notificationService.getPreferences(userId);
 
@@ -176,7 +178,7 @@ class NotificationController {
    */
   async updatePreferences(req, res, next) {
     try {
-      const { userId } = req.user.userId;
+      const { userId } = req.user;
 
       const preferences = await this.notificationService.updatePreferences(userId, req.body);
 
@@ -222,7 +224,7 @@ class NotificationController {
       const adminId = req.user.userId;
       const { title, message, type = 'system', channels = ['in_app'], filters } = req.body;
 
-      const result = await this.notificationService.sendBulkNotification({
+      const result = await this.notificationService.sendAdminBulkNotification({
         title,
         message,
         type,

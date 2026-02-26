@@ -55,9 +55,9 @@ class UserController {
    */
   async getProfile(req, res, next) {
     try {
-      const { userId } = req.user.userId;
+      const { userId } = req.user;
 
-      const profile = await this.userService.getUserProfile(userId);
+      const profile = await this.userService.getProfile(userId);
 
       return success(res, 'Profile retrieved', { user: profile });
     } catch (error) {
@@ -71,7 +71,7 @@ class UserController {
    */
   async updateProfile(req, res, next) {
     try {
-      const { userId } = req.user.userId;
+      const { userId } = req.user;
 
       const updatedProfile = await this.userService.updateProfile(userId, req.body);
 
@@ -126,7 +126,7 @@ class UserController {
    */
   async registerAsDriver(req, res, next) {
     try {
-      const { userId } = req.user.userId;
+      const { userId } = req.user;
 
       const result = await this.userService.registerAsDriver(userId, req.body);
 
@@ -169,7 +169,7 @@ class UserController {
       const { userId } = req.user;
       const { documentType, documentUrl, expiryDate } = req.body;
 
-      const document = await this.userService.uploadDocument(userId, {
+      const document = await this.userService.uploadDriverDocument(userId, {
         documentType,
         documentUrl,
         expiryDate,
@@ -191,7 +191,7 @@ class UserController {
     try {
       const { userId } = req.user;
 
-      const documents = await this.userService.getDocuments(userId);
+      const documents = await this.userService.getDriverDocuments(userId);
 
       return success(res, 'Documents retrieved', { documents });
     } catch (error) {
@@ -261,7 +261,7 @@ class UserController {
       const { userId } = req.user;
       const { vehicleId } = req.params;
 
-      await this.userService.deleteVehicle(userId, vehicleId);
+      await this.userService.removeVehicle(userId, vehicleId);
 
       return success(res, 'Vehicle removed successfully');
     } catch (error) {
@@ -331,7 +331,7 @@ class UserController {
       const { userId } = req.user;
       const { contactId } = req.params;
 
-      await this.userService.deleteEmergencyContact(userId, contactId);
+      await this.userService.removeEmergencyContact(userId, contactId);
 
       return success(res, 'Emergency contact removed');
     } catch (error) {
@@ -386,7 +386,7 @@ class UserController {
    */
   async getPreferences(req, res, next) {
     try {
-      const { userId } = req.user.userId;
+      const { userId } = req.user;
 
       const preferences = await this.userService.getPreferences(userId);
 
@@ -402,7 +402,7 @@ class UserController {
    */
   async updatePreferences(req, res, next) {
     try {
-      const { userId } = req.user.userId;
+      const { userId } = req.user;
 
       const preferences = await this.userService.updatePreferences(userId, req.body);
 
@@ -472,7 +472,7 @@ class UserController {
     try {
       const { userId } = req.params;
 
-      const user = await this.userService.getUserProfile(userId);
+      const user = await this.userService.getProfile(userId);
 
       return success(res, 'User details retrieved', { user });
     } catch (error) {

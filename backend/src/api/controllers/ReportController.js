@@ -46,14 +46,9 @@ class ReportController {
   async getDriverCashReport(req, res, next) {
     try {
       const driverId = req.user.userId;
-      const { startDate, endDate, page = 1, limit = 20 } = req.query;
+      const { date } = req.query;
 
-      const report = await this.reportingService.getDriverCashReport(driverId, {
-        startDate,
-        endDate,
-        page: parseInt(page, 10),
-        limit: parseInt(limit, 10),
-      });
+      const report = await this.reportingService.getDailyCashReport(driverId, date);
 
       return success(res, 'Cash collection report', { report });
     } catch (error) {
@@ -86,7 +81,7 @@ class ReportController {
     try {
       const driverId = req.user.userId;
 
-      const summary = await this.reportingService.getDriverSummary(driverId);
+      const summary = await this.reportingService.getDriverPaymentSummary(driverId);
 
       return success(res, 'Driver summary', { summary });
     } catch (error) {
@@ -163,7 +158,7 @@ class ReportController {
    */
   async getPlatformStatistics(req, res, next) {
     try {
-      const stats = await this.reportingService.getPlatformStatistics();
+      const stats = await this.reportingService.getPlatformAnalytics();
 
       return success(res, 'Platform statistics', { statistics: stats });
     } catch (error) {
@@ -199,7 +194,7 @@ class ReportController {
     try {
       const { startDate, endDate, groupBy = 'week' } = req.query;
 
-      const report = await this.reportingService.getUserGrowthReport({
+      const report = await this.reportingService.getUserGrowth({
         startDate,
         endDate,
         groupBy,
