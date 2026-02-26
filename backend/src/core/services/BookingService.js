@@ -37,6 +37,7 @@ const {
 } = require('../../shared/errors');
 const { ERROR_CODES, ERROR_MESSAGES } = require('../../shared/constants/errors');
 const { BOOKING_EVENTS } = require('../../shared/constants/events');
+const { getBookingEventPublisher } = require('../../infrastructure/messaging');
 
 /**
  * Booking status constants
@@ -81,6 +82,7 @@ class BookingService {
     this.rideRepository = new RideRepository();
     this.userRepository = new UserRepository();
     this.serviceName = 'BookingService';
+    this.eventPublisher = getBookingEventPublisher();
   }
 
   // ==================== Booking Creation ====================
@@ -195,6 +197,11 @@ class BookingService {
         seats,
         totalAmount,
         duration: Date.now() - startTime,
+      });
+
+      // Fire-and-forget: notify passenger via SQS
+      this.eventPublisher.bookingCreated(booking).catch((err) => {
+        logger.warn('Failed to publish bookingCreated event', { bookingId, error: err.message });
       });
 
       return {
@@ -457,6 +464,11 @@ class BookingService {
         bookingId,
       });
 
+      // Fire-and-forget: notify passenger via SQS
+      this.eventPublisher.bookingConfirmed(booking).catch((err) => {
+        logger.warn('Failed to publish bookingConfirmed event', { bookingId, error: err.message });
+      });
+
       return {
         booking: this._sanitizeBooking(updatedBooking),
         message: 'Booking confirmed successfully',
@@ -548,6 +560,11 @@ class BookingService {
         bookingId,
         cancelledBy,
         isLateCancellation,
+      });
+
+      // Fire-and-forget: notify other party via SQS
+      this.eventPublisher.bookingCancelled(booking, cancelledBy, reason).catch((err) => {
+        logger.warn('Failed to publish bookingCancelled event', { bookingId, error: err.message });
       });
 
       return {
@@ -982,6 +999,11 @@ class BookingService {
         action: BOOKING_EVENTS.BOOKING_NO_SHOW,
         bookingId,
         passengerId: booking.passengerId,
+      });
+
+      // Fire-and-forget: notify passenger via SQS
+      this.eventPublisher.bookingNoShow(booking).catch((err) => {
+        logger.warn('Failed to publish bookingNoShow event', { bookingId, error: err.message });
       });
 
       return {

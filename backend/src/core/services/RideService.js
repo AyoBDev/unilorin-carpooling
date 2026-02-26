@@ -38,6 +38,7 @@ const {
 } = require('../../shared/errors');
 const { ERROR_CODES, ERROR_MESSAGES } = require('../../shared/constants/errors');
 const { RIDE_EVENTS } = require('../../shared/constants/events');
+const { getRideEventPublisher } = require('../../infrastructure/messaging');
 
 /**
  * Ride status constants
@@ -78,6 +79,7 @@ class RideService {
     this.userRepository = new UserRepository();
     this.vehicleRepository = new VehicleRepository();
     this.serviceName = 'RideService';
+    this.eventPublisher = getRideEventPublisher();
   }
 
   // ==================== Ride Creation ====================
@@ -711,6 +713,13 @@ class RideService {
         rideId,
         affectedBookings: activeBookings.length,
       });
+
+      // Fire-and-forget: notify affected passengers via SQS
+      if (activeBookings.length > 0) {
+        this.eventPublisher.rideCancelled(ride, activeBookings, reason).catch((err) => {
+          logger.warn('Failed to publish rideCancelled event', { rideId, error: err.message });
+        });
+      }
 
       return {
         message: 'Ride cancelled successfully',

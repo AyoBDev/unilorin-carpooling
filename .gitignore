@@ -54,3 +54,5 @@ backend/test_finish_debug.js
 backend/test_finish_detection.js
 backend/test_with_express.js
 fix-constants.js
+CLAUDE.md
+PROJECT_PROGRESS_UPDATED.md
