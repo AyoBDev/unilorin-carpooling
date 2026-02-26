@@ -91,6 +91,7 @@ module "lambda" {
     APP_URL                = var.app_url
     NOTIFICATION_QUEUE_URL = module.messaging.notification_queue_url
     MAPBOX_ACCESS_TOKEN    = var.mapbox_access_token
+    BCRYPT_ROUNDS          = "8"
   }
 
   # ── External resource ARNs ─────────────────────────────

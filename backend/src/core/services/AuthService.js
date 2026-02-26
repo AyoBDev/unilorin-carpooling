@@ -151,7 +151,7 @@ class AuthService {
           matricNumber,
           department,
           faculty,
-          level: parseInt(level, 10),
+          ...(level != null && { level: parseInt(level, 10) }),
         }),
         ...(role === 'staff' && {
           staffId,
@@ -1024,6 +1024,20 @@ class AuthService {
     delete sanitized.lockedUntil;
     delete sanitized.refreshTokens;
     delete sanitized.otp;
+
+    // Remove DynamoDB internal attributes
+    delete sanitized.PK;
+    delete sanitized.SK;
+    delete sanitized.GSI1PK;
+    delete sanitized.GSI1SK;
+    delete sanitized.GSI2PK;
+    delete sanitized.GSI2SK;
+    delete sanitized.GSI3PK;
+    delete sanitized.GSI3SK;
+    delete sanitized.GSI4PK;
+    delete sanitized.GSI4SK;
+    delete sanitized.entityType;
+    delete sanitized.EntityType;
 
     return sanitized;
   }

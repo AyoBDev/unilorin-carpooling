@@ -10,7 +10,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 
 // Configuration
-const BCRYPT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS, 10) || 12;
+const BCRYPT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS, 10) || 10;
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'default-encryption-key-32-chars!'; // Must be 32 bytes for AES-256
 const IV_LENGTH = 16; // For AES, this is always 16
 
@@ -439,6 +439,28 @@ const timingSafeCompare = (a, b) => {
   return crypto.timingSafeEqual(bufA, bufB);
 };
 
+// ── JWT Support ─────────────────────────────────────────
+const jwt = require('jsonwebtoken');
+
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
+
+/**
+ * Convenience wrappers used by AuthService and auth middleware
+ */
+const hashPassword = (plainPassword) => password.hash(plainPassword);
+const comparePassword = (plain, hashed) => password.compare(plain, hashed);
+const generateSecureToken = (length) => tokens.generateSecure(length);
+const generateOTP = (digits) => tokens.generateOTP(digits);
+const generateRefreshToken = () => tokens.generateSecure(64);
+
+const generateJWT = (payload, expiresIn = '24h') => {
+  return jwt.sign(payload, JWT_SECRET, { expiresIn });
+};
+
+const verifyJWT = (token) => {
+  return jwt.verify(token, JWT_SECRET);
+};
+
 module.exports = {
   password,
   tokens,
@@ -447,4 +469,12 @@ module.exports = {
   masking,
   timingSafeCompare,
   BCRYPT_ROUNDS,
+  // Convenience exports for AuthService / auth middleware
+  hashPassword,
+  comparePassword,
+  generateJWT,
+  verifyJWT,
+  generateSecureToken,
+  generateRefreshToken,
+  generateOTP,
 };

@@ -54,24 +54,37 @@ const HTTP_STATUS = {
  */
 
 /**
- * Build a success response
- * @param {Object} options - Response options
- * @param {any} options.data - Response data
- * @param {string} options.message - Success message
- * @param {Object} options.meta - Additional metadata
- * @param {number} options.statusCode - HTTP status code
- * @returns {Object} Formatted response
+ * Build a success response.
+ *
+ * Supports two calling conventions:
+ *   success(res, message, data)  – sends JSON response directly
+ *   success({ data, message })   – returns { statusCode, body } object
  */
-const success = ({
-  data = null,
-  message = 'Operation successful',
-  meta = null,
-  statusCode = HTTP_STATUS.OK,
-} = {}) => {
+const success = (resOrOpts, message, data) => {
+  // Controller shorthand: success(res, message, data)
+  if (resOrOpts && typeof resOrOpts === 'object' && typeof resOrOpts.status === 'function') {
+    const res = resOrOpts;
+    const body = {
+      success: true,
+      message: message || 'Operation successful',
+      data: data || null,
+      timestamp: toISO(),
+    };
+    return res.status(HTTP_STATUS.OK).json(body);
+  }
+
+  // Builder form: success({ data, message, meta, statusCode })
+  const {
+    data: d = null,
+    message: msg = 'Operation successful',
+    meta = null,
+    statusCode = HTTP_STATUS.OK,
+  } = resOrOpts || {};
+
   const response = {
     success: true,
-    message,
-    data,
+    message: msg,
+    data: d,
     timestamp: toISO(),
   };
 
@@ -118,8 +131,22 @@ const error = ({
  */
 const ok = (data, message = 'Success') => success({ data, message, statusCode: HTTP_STATUS.OK });
 
-const created = (data, message = 'Resource created successfully') =>
-  success({ data, message, statusCode: HTTP_STATUS.CREATED });
+const created = (resOrData, message = 'Resource created successfully', data) => {
+  // Controller shorthand: created(res, message, data)
+  if (resOrData && typeof resOrData === 'object' && typeof resOrData.status === 'function') {
+    const res = resOrData;
+    const body = {
+      success: true,
+      message: message || 'Resource created successfully',
+      data: data || null,
+      timestamp: toISO(),
+    };
+    return res.status(HTTP_STATUS.CREATED).json(body);
+  }
+
+  // Builder form: created(data, message)
+  return success({ data: resOrData, message, statusCode: HTTP_STATUS.CREATED });
+};
 
 const accepted = (data, message = 'Request accepted') =>
   success({ data, message, statusCode: HTTP_STATUS.ACCEPTED });

@@ -423,13 +423,16 @@ class UserRepository {
   async updatePassword(userId, newPasswordHash) {
     try {
       const keys = this._generateKeys(userId);
+      // Support both string and object { passwordHash } signatures
+      const hash = typeof newPasswordHash === 'object' ? newPasswordHash.passwordHash : newPasswordHash;
 
       const params = {
         TableName: this.tableName,
         Key: keys,
-        UpdateExpression: 'SET passwordHash = :passwordHash, updatedAt = :updatedAt',
+        UpdateExpression: 'SET passwordHash = :passwordHash, updatedAt = :updatedAt, passwordResetToken = :null, passwordResetExpiry = :null',
         ExpressionAttributeValues: {
-          ':passwordHash': newPasswordHash,
+          ':passwordHash': hash,
+          ':null': null,
           ':updatedAt': new Date().toISOString(),
         },
         ReturnValues: 'ALL_NEW',
@@ -911,6 +914,220 @@ class UserRepository {
     } catch (error) {
       return handleDynamoDBError(error, 'BatchGetUsers');
     }
+  }
+
+  // ── Aliases for AuthService compatibility ──────────────
+
+  _addComputedFields(user) {
+    if (!user) return user;
+    return {
+      ...user,
+      isActive: user.status === 'active',
+      isVerified: user.emailVerified || false,
+    };
+  }
+
+  async findByEmail(email, includePassword = true) {
+    const user = await this.getByEmail(email, includePassword);
+    return this._addComputedFields(user);
+  }
+
+  async findById(userId, includePassword = false) {
+    const user = await this.getById(userId, includePassword);
+    return this._addComputedFields(user);
+  }
+
+  async findByMatricNumber(matricNumber) {
+    return this.getByMatricNumber(matricNumber);
+  }
+
+  async findByStaffId(staffId) {
+    return this.getByStaffId(staffId);
+  }
+
+  // ── Token & Session Management ────────────────────────
+
+  async updateLoginAttempts(userId, attempts, lockedUntil = null) {
+    const keys = this._generateKeys(userId);
+    const updateExpr = lockedUntil
+      ? 'SET loginAttempts = :attempts, lockedUntil = :lockedUntil, updatedAt = :now'
+      : 'SET loginAttempts = :attempts, updatedAt = :now REMOVE lockedUntil';
+    const values = { ':attempts': attempts, ':now': new Date().toISOString() };
+    if (lockedUntil) values[':lockedUntil'] = lockedUntil;
+
+    await docClient.send(new UpdateCommand({
+      TableName: this.tableName,
+      Key: keys,
+      UpdateExpression: updateExpr,
+      ExpressionAttributeValues: values,
+    }));
+  }
+
+  async storeRefreshToken(userId, tokenData) {
+    const keys = this._generateKeys(userId);
+    await docClient.send(new UpdateCommand({
+      TableName: this.tableName,
+      Key: keys,
+      UpdateExpression: 'SET refreshTokens = list_append(if_not_exists(refreshTokens, :empty), :token), updatedAt = :now',
+      ExpressionAttributeValues: {
+        ':token': [tokenData],
+        ':empty': [],
+        ':now': new Date().toISOString(),
+      },
+    }));
+  }
+
+  async removeRefreshToken(userId, refreshToken) {
+    const user = await this.getById(userId, true);
+    if (!user) return;
+    const tokens = (user.refreshTokens || []).filter(t => t.token !== refreshToken);
+    await docClient.send(new UpdateCommand({
+      TableName: this.tableName,
+      Key: this._generateKeys(userId),
+      UpdateExpression: 'SET refreshTokens = :tokens, updatedAt = :now',
+      ExpressionAttributeValues: { ':tokens': tokens, ':now': new Date().toISOString() },
+    }));
+  }
+
+  async findByRefreshToken(refreshToken) {
+    // Scan for user with matching refresh token — not ideal but functional for MVP
+    const params = {
+      TableName: this.tableName,
+      FilterExpression: 'entityType = :type AND contains(#rt, :token)',
+      ExpressionAttributeNames: { '#rt': 'refreshTokens' },
+      ExpressionAttributeValues: { ':type': 'USER', ':token': refreshToken },
+    };
+    try {
+      const result = await docClient.send(new QueryCommand(params));
+      return result.Items?.[0] || null;
+    } catch {
+      // Fallback: not found
+      return null;
+    }
+  }
+
+  async invalidateAllRefreshTokens(userId) {
+    await docClient.send(new UpdateCommand({
+      TableName: this.tableName,
+      Key: this._generateKeys(userId),
+      UpdateExpression: 'SET refreshTokens = :empty, updatedAt = :now',
+      ExpressionAttributeValues: { ':empty': [], ':now': new Date().toISOString() },
+    }));
+  }
+
+  async getRefreshTokens(userId) {
+    const user = await this.getById(userId, true);
+    return user?.refreshTokens || [];
+  }
+
+  async removeRefreshTokenById(userId, tokenId) {
+    const user = await this.getById(userId, true);
+    if (!user) return;
+    const tokens = (user.refreshTokens || []).filter(t => t.id !== tokenId);
+    await docClient.send(new UpdateCommand({
+      TableName: this.tableName,
+      Key: this._generateKeys(userId),
+      UpdateExpression: 'SET refreshTokens = :tokens, updatedAt = :now',
+      ExpressionAttributeValues: { ':tokens': tokens, ':now': new Date().toISOString() },
+    }));
+  }
+
+  // ── Verification & Password Reset Tokens ──────────────
+
+  async updateVerificationToken(userId, tokenData) {
+    await docClient.send(new UpdateCommand({
+      TableName: this.tableName,
+      Key: this._generateKeys(userId),
+      UpdateExpression: 'SET emailVerificationToken = :token, verificationTokenExpiry = :expiry, updatedAt = :now',
+      ExpressionAttributeValues: {
+        ':token': tokenData.token,
+        ':expiry': tokenData.expiresAt,
+        ':now': new Date().toISOString(),
+      },
+    }));
+  }
+
+  async findByVerificationToken(token) {
+    const params = {
+      TableName: this.tableName,
+      FilterExpression: 'entityType = :type AND emailVerificationToken = :token',
+      ExpressionAttributeValues: { ':type': 'USER', ':token': token },
+    };
+    try {
+      const result = await docClient.send(new QueryCommand(params));
+      return result.Items?.[0] || null;
+    } catch {
+      return null;
+    }
+  }
+
+  async storePasswordResetToken(userId, tokenData) {
+    await docClient.send(new UpdateCommand({
+      TableName: this.tableName,
+      Key: this._generateKeys(userId),
+      UpdateExpression: 'SET passwordResetToken = :token, passwordResetExpiry = :expiry, updatedAt = :now',
+      ExpressionAttributeValues: {
+        ':token': tokenData.token,
+        ':expiry': tokenData.expiresAt,
+        ':now': new Date().toISOString(),
+      },
+    }));
+  }
+
+  async findByPasswordResetToken(token) {
+    const params = {
+      TableName: this.tableName,
+      FilterExpression: 'entityType = :type AND passwordResetToken = :token',
+      ExpressionAttributeValues: { ':type': 'USER', ':token': token },
+    };
+    try {
+      const result = await docClient.send(new QueryCommand(params));
+      return result.Items?.[0] || null;
+    } catch {
+      return null;
+    }
+  }
+
+  // ── OTP Management ────────────────────────────────────
+
+  async storeOTP(userId, otpData) {
+    await docClient.send(new UpdateCommand({
+      TableName: this.tableName,
+      Key: this._generateKeys(userId),
+      UpdateExpression: 'SET otpData = if_not_exists(otpData, :empty)',
+      ExpressionAttributeValues: { ':empty': {} },
+    }));
+    await docClient.send(new UpdateCommand({
+      TableName: this.tableName,
+      Key: this._generateKeys(userId),
+      UpdateExpression: `SET otpData.#purpose = :otp, updatedAt = :now`,
+      ExpressionAttributeNames: { '#purpose': otpData.purpose },
+      ExpressionAttributeValues: {
+        ':otp': { code: otpData.code, expiresAt: otpData.expiresAt, attempts: 0 },
+        ':now': new Date().toISOString(),
+      },
+    }));
+  }
+
+  async getOTP(userId, purpose) {
+    const user = await this.getById(userId, true);
+    return user?.otpData?.[purpose] || null;
+  }
+
+  async removeOTP(userId, purpose) {
+    await docClient.send(new UpdateCommand({
+      TableName: this.tableName,
+      Key: this._generateKeys(userId),
+      UpdateExpression: 'REMOVE otpData.#purpose SET updatedAt = :now',
+      ExpressionAttributeNames: { '#purpose': purpose },
+      ExpressionAttributeValues: { ':now': new Date().toISOString() },
+    }));
+  }
+
+  // ── Profile Update ────────────────────────────────────
+
+  async updateProfile(userId, updates) {
+    return this.update(userId, updates);
   }
 
   /**

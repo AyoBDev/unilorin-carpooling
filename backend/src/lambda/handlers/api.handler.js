@@ -39,6 +39,7 @@ const { RedisClient } = require('../../infrastructure/cache');
 // ─── Serverless-HTTP Options ────────────────────────────
 
 const serverlessOptions = {
+  provider: 'aws',
   /**
    * Transform the API Gateway request before Express sees it.
    * Useful for normalising headers or injecting context.

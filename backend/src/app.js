@@ -107,16 +107,18 @@ logger.info('Express application configured', {
 const redisClient = require('./infrastructure/cache/RedisClient');
 
 // Connect Redis (non-blocking — app works without cache)
-(async () => {
-  try {
-    await redisClient.connect();
-    logger.info('Redis cache connected');
-  } catch (error) {
-    logger.warn('Redis cache unavailable — running without cache', {
-      error: error.message,
-    });
-  }
-})();
+if (process.env.CACHE_ENABLED !== 'false' && process.env.REDIS_ENDPOINT) {
+  (async () => {
+    try {
+      await redisClient.connect();
+      logger.info('Redis cache connected');
+    } catch (error) {
+      logger.warn('Redis cache unavailable — running without cache', {
+        error: error.message,
+      });
+    }
+  })();
+}
 
 // Add health check endpoint
 app.get('/api/v1/health', async (req, res) => {

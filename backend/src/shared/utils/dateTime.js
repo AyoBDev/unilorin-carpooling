@@ -505,6 +505,13 @@ const validate = {
     minutes >= MIN_WAIT_TIME_MINUTES && minutes <= MAX_WAIT_TIME_MINUTES,
 };
 
+// Convenience wrappers for AuthService
+const formatDate = format;
+const addHours = (date, hours) => manipulate.add(date, hours, 'hour').toISOString();
+const addDays = (date, days) => manipulate.add(date, days, 'day').toISOString();
+const addMinutes = (date, minutes) => manipulate.add(date, minutes, 'minute').toISOString();
+const isExpired = (date) => compare.isPast(date);
+
 module.exports = {
   // Core
   dayjs,
@@ -526,6 +533,13 @@ module.exports = {
 
   // Ride specific
   ride,
+
+  // Convenience wrappers
+  formatDate,
+  addHours,
+  addDays,
+  addMinutes,
+  isExpired,
 
   // Constants
   TIMEZONE,

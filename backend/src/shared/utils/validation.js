@@ -589,6 +589,12 @@ const helpers = {
   },
 };
 
+/**
+ * Convenience validators for AuthService
+ */
+const validateRegistration = (data) => helpers.validate(data, auth.register);
+const validateLogin = (data) => helpers.validate(data, auth.login);
+
 module.exports = {
   joi,
   patterns,
@@ -605,5 +611,7 @@ module.exports = {
     vehicle,
     admin,
   },
+  validateRegistration,
+  validateLogin,
   ...helpers,
 };

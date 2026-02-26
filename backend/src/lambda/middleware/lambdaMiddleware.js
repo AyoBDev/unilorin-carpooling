@@ -142,15 +142,15 @@ const buildErrorResponse = (error, correlationId) => {
  */
 const createTimeoutGuard = (context, bufferMs = 3000) => {
   if (!context || !context.getRemainingTimeInMillis) {
-    // Not running in real Lambda – return a never-resolving promise
     return new Promise(() => {});
   }
 
   const remaining = context.getRemainingTimeInMillis();
   const timeout = Math.max(remaining - bufferMs, 1000);
+  let timer;
 
-  return new Promise((_, reject) => {
-    setTimeout(() => {
+  const promise = new Promise((_, reject) => {
+    timer = setTimeout(() => {
       reject(
         Object.assign(new Error('Lambda execution approaching timeout'), {
           statusCode: 504,
@@ -160,6 +160,9 @@ const createTimeoutGuard = (context, bufferMs = 3000) => {
       );
     }, timeout);
   });
+
+  promise.cancel = () => clearTimeout(timer);
+  return promise;
 };
 
 // ─── Handler Wrapper ────────────────────────────────────
@@ -220,10 +223,15 @@ const withMiddleware = (functionName, handler, options = {}) => {
       let result;
 
       if (enableTimeoutGuard && context?.getRemainingTimeInMillis) {
-        result = await Promise.race([
-          handler(event, context),
-          createTimeoutGuard(context),
-        ]);
+        const guard = createTimeoutGuard(context);
+        try {
+          result = await Promise.race([
+            handler(event, context),
+            guard,
+          ]);
+        } finally {
+          if (guard.cancel) guard.cancel();
+        }
       } else {
         result = await handler(event, context);
       }

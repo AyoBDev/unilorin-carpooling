@@ -68,10 +68,10 @@ class AuthController {
         'Registration successful. Please check your email to verify your account.',
         {
           user: result.user,
-          accessToken: result.accessToken,
-          refreshToken: result.refreshToken,
-          expiresIn: result.expiresIn,
-          tokenType: result.tokenType,
+          accessToken: result.tokens.accessToken,
+          refreshToken: result.tokens.refreshToken,
+          expiresIn: result.tokens.expiresIn,
+          tokenType: result.tokens.tokenType,
         },
       );
     } catch (error) {
@@ -105,10 +105,10 @@ class AuthController {
 
       return success(res, 'Login successful', {
         user: result.user,
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
-        expiresIn: result.expiresIn,
-        tokenType: result.tokenType,
+        accessToken: result.tokens.accessToken,
+        refreshToken: result.tokens.refreshToken,
+        expiresIn: result.tokens.expiresIn,
+        tokenType: result.tokens.tokenType,
       });
     } catch (error) {
       return next(error);

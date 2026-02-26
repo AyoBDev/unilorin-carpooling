@@ -9,8 +9,8 @@ aws_region   = "eu-west-1"
 
 # ── Lambda ───────────────────────────────────────────────
 lambda_zip_path          = "../../../backend/dist/lambda.zip"
-lambda_memory_size       = 512       # Lower for dev (cost saving)
-lambda_timeout           = 30
+lambda_memory_size       = 1024      # Need 1GB+ for bcrypt performance
+lambda_timeout           = 60
 api_reserved_concurrency = -1        # Unreserved in dev
 create_lambda_layer      = false
 enable_vpc               = false     # No ElastiCache in dev
