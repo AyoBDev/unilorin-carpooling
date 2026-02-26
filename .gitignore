@@ -48,3 +48,9 @@ backend/dist/
 .terraform.lock.hcl
 tfplan
 
+backend/test_double_listeners.js
+backend/test_express_actual.js
+backend/test_finish_debug.js
+backend/test_finish_detection.js
+backend/test_with_express.js
+fix-constants.js
