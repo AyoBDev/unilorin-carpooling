@@ -1,0 +1,3857 @@
+openapi: 3.0.3
+info:
+  title: PSRide API
+  description: |
+    PSRide API — a serverless Node.js backend for ride-sharing among University of Ilorin members.
+
+    ## Authentication
+    Most endpoints require a Bearer JWT token obtained via `/auth/login` or `/auth/register`.
+    Include it in the `Authorization` header: `Bearer <token>`.
+
+    Tokens expire based on `JWT_EXPIRY` config. Use `/auth/refresh-token` with a refresh token to get a new access token.
+
+    ## Rate Limiting
+    All endpoints are rate-limited. Limits vary by endpoint type:
+    - General API: 100 req/15 min
+    - Auth endpoints: 20 req/15 min
+    - Login: 10 req/15 min
+    - Password reset: 5 req/15 min
+    - OTP: 5 req/15 min
+    - Search: 30 req/15 min
+    - Booking: 10 req/15 min
+    - SOS: 5 req/15 min
+
+    Rate limit headers returned: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`.
+
+    ## Payment Model
+    Phase 1 MVP uses cash-only payments with a 6-digit verification code flow.
+
+    ## Error Handling
+    All errors follow a consistent format with error codes from the `ErrorCodes` enum.
+  version: 1.0.0
+  contact:
+    name: PSRide Team
+  license:
+    name: MIT
+
+servers:
+  - url: https://jk4sd35xw3.execute-api.eu-west-1.amazonaws.com/dev/api/v1
+    description: Development
+  - url: http://localhost:3000/api/v1
+    description: Local Development
+
+tags:
+  - name: Auth
+    description: Authentication and session management
+  - name: Users
+    description: User profiles, driver registration, vehicles, emergency contacts, preferences
+  - name: Rides
+    description: Ride search, creation, management, pickup points, recurring rides
+  - name: Bookings
+    description: Booking lifecycle — create, confirm, verify, complete, cancel
+  - name: Ratings
+    description: Post-ride ratings and reliability scores
+  - name: Notifications
+    description: User notifications and preferences
+  - name: Safety
+    description: SOS alerts, location sharing, incident reports
+  - name: Reports
+    description: Driver-facing cash, earnings, and summary reports
+  - name: Admin
+    description: Admin user management, driver verification, platform analytics
+
+paths:
+  # ──────────────────────────────────────────────
+  # AUTH ENDPOINTS
+  # ──────────────────────────────────────────────
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user
+      description: Creates a new student or staff account. Rate limited to 20 req/15 min.
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            example:
+              email: john.doe@unilorin.edu.ng
+              password: Password123
+              confirmPassword: Password123
+              firstName: John
+              lastName: Doe
+              phone: "08012345678"
+              role: student
+              matricNumber: "19/55EC/001"
+              department: Electrical Engineering
+              faculty: Engineering
+      responses:
+        '201':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          user:
+                            $ref: '#/components/schemas/User'
+                          tokens:
+                            $ref: '#/components/schemas/AuthTokens'
+                          verificationToken:
+                            type: string
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Log in
+      description: Authenticate with email and password. Rate limited to 10 req/15 min.
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              email: john.doe@unilorin.edu.ng
+              password: Password123
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          user:
+                            $ref: '#/components/schemas/User'
+                          tokens:
+                            $ref: '#/components/schemas/AuthTokens'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /auth/verify-email:
+    post:
+      tags: [Auth]
+      summary: Verify email address
+      description: Verify email with token sent during registration.
+      operationId: verifyEmail
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /auth/resend-verification:
+    post:
+      tags: [Auth]
+      summary: Resend verification email
+      operationId: resendVerification
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /auth/forgot-password:
+    post:
+      tags: [Auth]
+      summary: Request password reset
+      description: Sends a password reset link to the email. Rate limited to 5 req/15 min.
+      operationId: forgotPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /auth/reset-password:
+    post:
+      tags: [Auth]
+      summary: Reset password with token
+      description: Rate limited to 5 req/15 min.
+      operationId: resetPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /auth/refresh-token:
+    post:
+      tags: [Auth]
+      summary: Refresh access token
+      operationId: refreshToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken:
+                  type: string
+      responses:
+        '200':
+          description: Token refreshed
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          accessToken:
+                            type: string
+                          expiresIn:
+                            type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current user
+      operationId: getMe
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Current user profile
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/change-password:
+    post:
+      tags: [Auth]
+      summary: Change password
+      operationId: changePassword
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Log out current session
+      operationId: logout
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/logout-all:
+    post:
+      tags: [Auth]
+      summary: Log out all sessions
+      operationId: logoutAll
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/send-otp:
+    post:
+      tags: [Auth]
+      summary: Send OTP to phone
+      description: Rate limited to 5 req/15 min.
+      operationId: sendOTP
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone]
+              properties:
+                phone:
+                  type: string
+                  pattern: '^(\+?234|0)[789][01]\d{8}$'
+                  example: "08012345678"
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /auth/verify-otp:
+    post:
+      tags: [Auth]
+      summary: Verify OTP code
+      description: Rate limited to 5 req/15 min.
+      operationId: verifyOTP
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [otp]
+              properties:
+                otp:
+                  type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /auth/sessions:
+    get:
+      tags: [Auth]
+      summary: List active sessions
+      operationId: getSessions
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of active sessions
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            sessionId:
+                              type: string
+                            createdAt:
+                              type: string
+                              format: date-time
+                            lastActive:
+                              type: string
+                              format: date-time
+                            userAgent:
+                              type: string
+                            ipAddress:
+                              type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/sessions/{sessionId}:
+    delete:
+      tags: [Auth]
+      summary: Revoke a specific session
+      operationId: revokeSession
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ──────────────────────────────────────────────
+  # USER ENDPOINTS
+  # ──────────────────────────────────────────────
+  /users/profile:
+    get:
+      tags: [Users]
+      summary: Get own profile
+      operationId: getProfile
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      tags: [Users]
+      summary: Update own profile
+      operationId: updateProfile
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      tags: [Users]
+      summary: Delete own account
+      operationId: deleteAccount
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/statistics:
+    get:
+      tags: [Users]
+      summary: Get own statistics
+      operationId: getStatistics
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/ride-history:
+    get:
+      tags: [Users]
+      summary: Get own ride history
+      operationId: getRideHistory
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/{userId}:
+    get:
+      tags: [Users]
+      summary: Get public user profile
+      operationId: getUserById
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: Public user profile
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /users/driver/register:
+    post:
+      tags: [Users]
+      summary: Register as a driver
+      description: Requires verified email.
+      operationId: registerAsDriver
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DriverRegistrationRequest'
+            example:
+              licenseNumber: "ABC12345"
+              licenseExpiry: "2027-12-31"
+              vehicle:
+                make: Toyota
+                model: Corolla
+                year: 2020
+                color: White
+                plateNumber: KWL-123-AB
+                capacity: 4
+                vehicleType: sedan
+      responses:
+        '201':
+          $ref: '#/components/responses/Created'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /users/driver/status:
+    get:
+      tags: [Users]
+      summary: Get driver verification status
+      operationId: getVerificationStatus
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/driver/documents:
+    post:
+      tags: [Users]
+      summary: Upload driver document
+      description: Requires verified email.
+      operationId: uploadDocument
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                documentType:
+                  type: string
+                documentUrl:
+                  type: string
+      responses:
+        '201':
+          $ref: '#/components/responses/Created'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    get:
+      tags: [Users]
+      summary: Get driver documents
+      operationId: getDocuments
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/vehicles:
+    get:
+      tags: [Users]
+      summary: List vehicles
+      operationId: getVehicles
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of vehicles
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Vehicle'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Users]
+      summary: Add a vehicle
+      description: Requires verified email.
+      operationId: addVehicle
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateVehicleRequest'
+      responses:
+        '201':
+          $ref: '#/components/responses/Created'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /users/vehicles/{vehicleId}:
+    put:
+      tags: [Users]
+      summary: Update a vehicle
+      operationId: updateVehicle
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/VehicleId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateVehicleRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Users]
+      summary: Delete a vehicle
+      operationId: deleteVehicle
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/VehicleId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /users/emergency-contacts:
+    get:
+      tags: [Users]
+      summary: List emergency contacts
+      operationId: getEmergencyContacts
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of emergency contacts
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/EmergencyContact'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Users]
+      summary: Add emergency contact
+      operationId: addEmergencyContact
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmergencyContactRequest'
+      responses:
+        '201':
+          $ref: '#/components/responses/Created'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /users/emergency-contacts/{contactId}:
+    put:
+      tags: [Users]
+      summary: Update emergency contact
+      operationId: updateEmergencyContact
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ContactId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmergencyContactRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Users]
+      summary: Delete emergency contact
+      operationId: deleteEmergencyContact
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ContactId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /users/preferences:
+    get:
+      tags: [Users]
+      summary: Get user preferences
+      operationId: getPreferences
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      tags: [Users]
+      summary: Update user preferences
+      operationId: updatePreferences
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ──────────────────────────────────────────────
+  # RIDE ENDPOINTS
+  # ──────────────────────────────────────────────
+  /rides/search:
+    get:
+      tags: [Rides]
+      summary: Search for rides
+      description: Public endpoint (optional auth). Rate limited to 30 req/15 min.
+      operationId: searchRides
+      parameters:
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^\d{4}-\d{2}-\d{2}$'
+          example: "2026-03-01"
+        - name: time
+          in: query
+          schema:
+            type: string
+            pattern: '^([01]?[0-9]|2[0-3]):[0-5][0-9]$'
+          example: "08:00"
+        - name: fromLat
+          in: query
+          schema:
+            type: number
+            minimum: -90
+            maximum: 90
+        - name: fromLng
+          in: query
+          schema:
+            type: number
+            minimum: -180
+            maximum: 180
+        - name: toLat
+          in: query
+          schema:
+            type: number
+            minimum: -90
+            maximum: 90
+        - name: toLng
+          in: query
+          schema:
+            type: number
+            minimum: -180
+            maximum: 180
+        - name: seats
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 7
+            default: 1
+        - name: maxPrice
+          in: query
+          schema:
+            type: number
+            minimum: 100
+            maximum: 5000
+        - name: radius
+          in: query
+          description: Search radius in km
+          schema:
+            type: number
+            minimum: 0.5
+            maximum: 10
+            default: 2
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/SortBy'
+        - $ref: '#/components/parameters/SortOrder'
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Ride'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /rides/popular-routes:
+    get:
+      tags: [Rides]
+      summary: Get popular routes
+      description: Public endpoint (optional auth).
+      operationId: getPopularRoutes
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /rides:
+    get:
+      tags: [Rides]
+      summary: Get available rides
+      operationId: getAvailableRides
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Available rides
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Ride'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Rides]
+      summary: Create a ride
+      description: Requires verified driver status.
+      operationId: createRide
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRideRequest'
+            example:
+              departureDate: "2026-03-01"
+              departureTime: "08:00"
+              startLocation:
+                address: Faculty of Engineering, UniLorin
+                coordinates:
+                  latitude: 8.4799
+                  longitude: 4.5418
+              endLocation:
+                address: Tanke Roundabout
+                coordinates:
+                  latitude: 8.4866
+                  longitude: 4.5589
+              availableSeats: 3
+              pricePerSeat: 500
+              waitTimeMinutes: 10
+              notes: AC available
+      responses:
+        '201':
+          description: Ride created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Ride'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /rides/match:
+    get:
+      tags: [Rides]
+      summary: Get matching rides
+      description: Returns rides matching the user's saved preferences.
+      operationId: getMatchingRides
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /rides/suggestions:
+    get:
+      tags: [Rides]
+      summary: Get ride suggestions
+      operationId: getSuggestions
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /rides/my-rides:
+    get:
+      tags: [Rides]
+      summary: Get my rides as driver
+      description: Requires verified driver status.
+      operationId: getMyRides
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Driver's rides
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Ride'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /rides/{rideId}:
+    get:
+      tags: [Rides]
+      summary: Get ride details
+      operationId: getRide
+      parameters:
+        - $ref: '#/components/parameters/RideId'
+      responses:
+        '200':
+          description: Ride details
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Ride'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Rides]
+      summary: Update a ride
+      description: Requires driver ownership.
+      operationId: updateRide
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RideId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRideRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /rides/{rideId}/cancel:
+    post:
+      tags: [Rides]
+      summary: Cancel a ride
+      description: Requires driver ownership.
+      operationId: cancelRide
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RideId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /rides/{rideId}/start:
+    post:
+      tags: [Rides]
+      summary: Start a ride
+      description: Requires driver ownership.
+      operationId: startRide
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RideId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /rides/{rideId}/complete:
+    post:
+      tags: [Rides]
+      summary: Complete a ride
+      description: Requires driver ownership.
+      operationId: completeRide
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RideId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /rides/{rideId}/pickup-points:
+    get:
+      tags: [Rides]
+      summary: Get pickup points for a ride
+      operationId: getPickupPoints
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RideId'
+      responses:
+        '200':
+          description: Pickup points
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/PickupPoint'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [Rides]
+      summary: Add a pickup point
+      description: Requires driver ownership.
+      operationId: addPickupPoint
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RideId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePickupPointRequest'
+      responses:
+        '201':
+          $ref: '#/components/responses/Created'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /rides/{rideId}/pickup-points/reorder:
+    put:
+      tags: [Rides]
+      summary: Reorder pickup points
+      description: Requires driver ownership.
+      operationId: reorderPickupPoints
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RideId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                order:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /rides/{rideId}/pickup-points/{pickupPointId}:
+    delete:
+      tags: [Rides]
+      summary: Remove a pickup point
+      description: Requires driver ownership.
+      operationId: removePickupPoint
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RideId'
+        - name: pickupPointId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /rides/{rideId}/bookings:
+    get:
+      tags: [Rides]
+      summary: Get bookings for a ride
+      description: Requires driver ownership.
+      operationId: getRideBookings
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RideId'
+      responses:
+        '200':
+          description: Ride bookings
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Booking'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /rides/{rideId}/passengers:
+    get:
+      tags: [Rides]
+      summary: Get passengers for a ride
+      description: Requires driver ownership.
+      operationId: getRidePassengers
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RideId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /rides/recurring:
+    post:
+      tags: [Rides]
+      summary: Create recurring ride schedule
+      description: Requires verified driver status.
+      operationId: createRecurringRide
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRideRequest'
+      responses:
+        '201':
+          $ref: '#/components/responses/Created'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /rides/recurring/my-schedules:
+    get:
+      tags: [Rides]
+      summary: Get my recurring ride schedules
+      description: Requires verified driver status.
+      operationId: getMyRecurringRides
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /rides/recurring/{scheduleId}/cancel:
+    post:
+      tags: [Rides]
+      summary: Cancel a recurring ride schedule
+      description: Requires driver ownership.
+      operationId: cancelRecurringRide
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: scheduleId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ──────────────────────────────────────────────
+  # BOOKING ENDPOINTS
+  # ──────────────────────────────────────────────
+  /bookings:
+    post:
+      tags: [Bookings]
+      summary: Create a booking
+      description: Book seats on a ride. Rate limited to 10 req/15 min. Requires verified email.
+      operationId: createBooking
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBookingRequest'
+            example:
+              rideId: "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
+              seats: 1
+              paymentMethod: cash
+              notes: Will be at the gate
+      responses:
+        '201':
+          description: Booking created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Booking'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+    get:
+      tags: [Bookings]
+      summary: Get my bookings
+      operationId: getMyBookings
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of bookings
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Booking'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /bookings/upcoming:
+    get:
+      tags: [Bookings]
+      summary: Get upcoming bookings
+      operationId: getUpcomingBookings
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /bookings/past:
+    get:
+      tags: [Bookings]
+      summary: Get past bookings
+      operationId: getPastBookings
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /bookings/statistics:
+    get:
+      tags: [Bookings]
+      summary: Get booking statistics
+      operationId: getBookingStatistics
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /bookings/{bookingId}:
+    get:
+      tags: [Bookings]
+      summary: Get booking details
+      operationId: getBooking
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      responses:
+        '200':
+          description: Booking details
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Booking'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /bookings/{bookingId}/cancel:
+    post:
+      tags: [Bookings]
+      summary: Cancel a booking
+      operationId: cancelBooking
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /bookings/{bookingId}/verification:
+    get:
+      tags: [Bookings]
+      summary: Get verification code
+      description: Passenger retrieves their 6-digit verification code to show the driver.
+      operationId: getVerificationCode
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      responses:
+        '200':
+          description: Verification code
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          verificationCode:
+                            type: string
+                            example: "123456"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /bookings/{bookingId}/confirm:
+    post:
+      tags: [Bookings]
+      summary: Confirm a booking (driver)
+      description: Driver confirms a pending booking.
+      operationId: confirmBooking
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /bookings/{bookingId}/verify:
+    post:
+      tags: [Bookings]
+      summary: Verify passenger (driver)
+      description: Driver verifies the passenger's 6-digit code at pickup.
+      operationId: verifyPassenger
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                verificationCode:
+                  type: string
+                  example: "123456"
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /bookings/{bookingId}/start:
+    post:
+      tags: [Bookings]
+      summary: Start booking trip (driver)
+      operationId: startBooking
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /bookings/{bookingId}/complete:
+    post:
+      tags: [Bookings]
+      summary: Complete booking (driver)
+      description: Mark booking as completed. Cash payment confirmation.
+      operationId: completeBooking
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                cashReceived:
+                  type: boolean
+                actualAmount:
+                  type: number
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /bookings/{bookingId}/no-show:
+    post:
+      tags: [Bookings]
+      summary: Mark passenger as no-show (driver)
+      operationId: markNoShow
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ──────────────────────────────────────────────
+  # RATING ENDPOINTS
+  # ──────────────────────────────────────────────
+  /ratings:
+    post:
+      tags: [Ratings]
+      summary: Create a rating
+      description: Rate a completed booking. Requires verified email.
+      operationId: createRating
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRatingRequest'
+            example:
+              bookingId: "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
+              score: 5
+              comment: Great ride, very punctual!
+              tags: [punctual, friendly, safe_driver]
+      responses:
+        '201':
+          description: Rating created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Rating'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /ratings/given:
+    get:
+      tags: [Ratings]
+      summary: Get ratings I've given
+      operationId: getMyRatingsGiven
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /ratings/received:
+    get:
+      tags: [Ratings]
+      summary: Get ratings I've received
+      operationId: getMyRatingsReceived
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /ratings/analytics:
+    get:
+      tags: [Ratings]
+      summary: Get my rating analytics
+      operationId: getRatingAnalytics
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /ratings/unrated:
+    get:
+      tags: [Ratings]
+      summary: Get unrated bookings
+      description: Returns completed bookings the user hasn't rated yet.
+      operationId: getUnratedBookings
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /ratings/user/{userId}:
+    get:
+      tags: [Ratings]
+      summary: Get ratings for a user
+      operationId: getUserRatings
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /ratings/reliability/{userId}:
+    get:
+      tags: [Ratings]
+      summary: Get reliability score for a user
+      operationId: getReliabilityScore
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: Reliability score
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          score:
+                            type: number
+                            example: 4.8
+                          totalRatings:
+                            type: integer
+                            example: 25
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /ratings/{ratingId}:
+    get:
+      tags: [Ratings]
+      summary: Get a specific rating
+      operationId: getRating
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RatingId'
+      responses:
+        '200':
+          description: Rating details
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Rating'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Ratings]
+      summary: Update a rating
+      operationId: updateRating
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RatingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                score:
+                  type: integer
+                  minimum: 1
+                  maximum: 5
+                comment:
+                  type: string
+                  maxLength: 500
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /ratings/{ratingId}/report:
+    post:
+      tags: [Ratings]
+      summary: Report a rating
+      operationId: reportRating
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RatingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  maxLength: 500
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ──────────────────────────────────────────────
+  # NOTIFICATION ENDPOINTS
+  # ──────────────────────────────────────────────
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: Get notifications
+      operationId: getNotifications
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of notifications
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Notification'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /notifications/unread-count:
+    get:
+      tags: [Notifications]
+      summary: Get unread notification count
+      operationId: getUnreadCount
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Unread count
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          count:
+                            type: integer
+                            example: 5
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /notifications/preferences:
+    get:
+      tags: [Notifications]
+      summary: Get notification preferences
+      operationId: getNotificationPreferences
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      tags: [Notifications]
+      summary: Update notification preferences
+      operationId: updateNotificationPreferences
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationPreferences'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /notifications/read-all:
+    patch:
+      tags: [Notifications]
+      summary: Mark all notifications as read
+      operationId: markAllAsRead
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /notifications/{notificationId}:
+    get:
+      tags: [Notifications]
+      summary: Get a notification
+      operationId: getNotification
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/NotificationId'
+      responses:
+        '200':
+          description: Notification details
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Notification'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Notifications]
+      summary: Delete a notification
+      operationId: deleteNotification
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/NotificationId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /notifications/{notificationId}/read:
+    patch:
+      tags: [Notifications]
+      summary: Mark notification as read
+      operationId: markAsRead
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/NotificationId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ──────────────────────────────────────────────
+  # SAFETY ENDPOINTS
+  # ──────────────────────────────────────────────
+  /safety/location/{shareToken}:
+    get:
+      tags: [Safety]
+      summary: Get shared location (public)
+      description: Access a shared live location via token. No authentication required.
+      operationId: getSharedLocation
+      parameters:
+        - name: shareToken
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /safety/sos:
+    post:
+      tags: [Safety]
+      summary: Trigger SOS alert
+      description: Send emergency alert to contacts and admin. Rate limited to 5 req/15 min.
+      operationId: triggerSOS
+      security:
+        - BearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                location:
+                  $ref: '#/components/schemas/Location'
+                rideId:
+                  type: string
+                  format: uuid
+                message:
+                  type: string
+                  maxLength: 500
+      responses:
+        '201':
+          $ref: '#/components/responses/Created'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+    get:
+      tags: [Safety]
+      summary: Get my SOS alerts
+      operationId: getMySOSAlerts
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /safety/sos/{alertId}:
+    get:
+      tags: [Safety]
+      summary: Get SOS alert details
+      operationId: getSOSAlert
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AlertId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /safety/sos/{alertId}/resolve:
+    post:
+      tags: [Safety]
+      summary: Resolve an SOS alert
+      operationId: resolveSOSAlert
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AlertId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /safety/location/share:
+    post:
+      tags: [Safety]
+      summary: Start sharing location
+      operationId: shareLocation
+      security:
+        - BearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                rideId:
+                  type: string
+                  format: uuid
+                duration:
+                  type: integer
+                  description: Duration in minutes
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /safety/location/stop:
+    post:
+      tags: [Safety]
+      summary: Stop sharing location
+      operationId: stopLocationSharing
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /safety/location:
+    put:
+      tags: [Safety]
+      summary: Update current location
+      operationId: updateLocation
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                latitude:
+                  type: number
+                longitude:
+                  type: number
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /safety/incidents:
+    post:
+      tags: [Safety]
+      summary: Report an incident
+      operationId: reportIncident
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                rideId:
+                  type: string
+                  format: uuid
+                type:
+                  type: string
+                description:
+                  type: string
+                  maxLength: 1000
+      responses:
+        '201':
+          $ref: '#/components/responses/Created'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    get:
+      tags: [Safety]
+      summary: Get my incident reports
+      operationId: getIncidentReports
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ──────────────────────────────────────────────
+  # REPORT ENDPOINTS (Driver)
+  # ──────────────────────────────────────────────
+  /reports/driver/cash:
+    get:
+      tags: [Reports]
+      summary: Get driver cash report
+      description: Requires verified driver status.
+      operationId: getDriverCashReport
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /reports/driver/earnings:
+    get:
+      tags: [Reports]
+      summary: Get driver earnings
+      description: Requires verified driver status.
+      operationId: getDriverEarnings
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /reports/driver/summary:
+    get:
+      tags: [Reports]
+      summary: Get driver summary
+      description: Requires verified driver status.
+      operationId: getDriverSummary
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ──────────────────────────────────────────────
+  # ADMIN ENDPOINTS
+  # ──────────────────────────────────────────────
+  /admin/users:
+    get:
+      tags: [Admin]
+      summary: List all users
+      description: Requires admin role.
+      operationId: adminGetUsers
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: query
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+        - name: role
+          in: query
+          schema:
+            type: string
+            enum: [student, staff, admin]
+        - name: isDriver
+          in: query
+          schema:
+            type: boolean
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, suspended, banned, pending]
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/SortBy'
+        - $ref: '#/components/parameters/SortOrder'
+      responses:
+        '200':
+          description: Paginated user list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/User'
+                      meta:
+                        $ref: '#/components/schemas/PaginationMeta'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/users/{userId}:
+    get:
+      tags: [Admin]
+      summary: Get user by ID (admin)
+      operationId: adminGetUserById
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Admin]
+      summary: Update user (admin)
+      operationId: adminUpdateUser
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/users/{userId}/verify-driver:
+    post:
+      tags: [Admin]
+      summary: Verify or reject driver
+      operationId: adminVerifyDriver
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [approved]
+              properties:
+                approved:
+                  type: boolean
+                rejectionReason:
+                  type: string
+                  maxLength: 500
+                  description: Required when approved is false
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/users/{userId}/suspend:
+    post:
+      tags: [Admin]
+      summary: Suspend a user
+      operationId: adminSuspendUser
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+                  maxLength: 500
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/notifications/send:
+    post:
+      tags: [Admin]
+      summary: Send notification to a user
+      operationId: adminSendNotification
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId, title, message]
+              properties:
+                userId:
+                  type: string
+                  format: uuid
+                title:
+                  type: string
+                message:
+                  type: string
+                type:
+                  type: string
+      responses:
+        '201':
+          $ref: '#/components/responses/Created'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/notifications/send-bulk:
+    post:
+      tags: [Admin]
+      summary: Send bulk notification
+      operationId: adminSendBulkNotification
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, message]
+              properties:
+                title:
+                  type: string
+                message:
+                  type: string
+                type:
+                  type: string
+                filters:
+                  type: object
+                  properties:
+                    role:
+                      type: string
+                    isDriver:
+                      type: boolean
+      responses:
+        '201':
+          $ref: '#/components/responses/Created'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/safety/sos:
+    get:
+      tags: [Admin]
+      summary: Get all SOS alerts
+      operationId: adminGetSOSAlerts
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/safety/incidents:
+    get:
+      tags: [Admin]
+      summary: Get all incident reports
+      operationId: adminGetIncidents
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/safety/incidents/{incidentId}/resolve:
+    post:
+      tags: [Admin]
+      summary: Resolve an incident
+      operationId: adminResolveIncident
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: incidentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/reports/cash-collection:
+    get:
+      tags: [Admin]
+      summary: Get daily cash collection report
+      operationId: getDailyCashCollection
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: date
+          in: query
+          schema:
+            type: string
+            pattern: '^\d{4}-\d{2}-\d{2}$'
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            pattern: '^\d{4}-\d{2}-\d{2}$'
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            pattern: '^\d{4}-\d{2}-\d{2}$'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/reports/reconciliation:
+    get:
+      tags: [Admin]
+      summary: Get cash reconciliation report
+      operationId: getCashReconciliation
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/reports/bookings:
+    get:
+      tags: [Admin]
+      summary: Get booking summary report
+      operationId: getBookingSummary
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/reports/statistics:
+    get:
+      tags: [Admin]
+      summary: Get platform statistics
+      operationId: getPlatformStatistics
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/reports/driver-leaderboard:
+    get:
+      tags: [Admin]
+      summary: Get driver leaderboard
+      operationId: getDriverLeaderboard
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/reports/user-growth:
+    get:
+      tags: [Admin]
+      summary: Get user growth report
+      operationId: getUserGrowth
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/reports/rides:
+    get:
+      tags: [Admin]
+      summary: Get ride analytics
+      operationId: getRideAnalytics
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/reports/revenue:
+    get:
+      tags: [Admin]
+      summary: Get revenue report
+      operationId: getRevenueReport
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ──────────────────────────────────────────────
+  # HEALTH CHECK
+  # ──────────────────────────────────────────────
+  /health:
+    get:
+      tags: [Auth]
+      summary: Health check
+      operationId: healthCheck
+      responses:
+        '200':
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: PSRide API is running
+                  timestamp:
+                    type: string
+                    format: date-time
+                  version:
+                    type: string
+                    example: v1
+                  environment:
+                    type: string
+                    example: development
+
+components:
+  # ──────────────────────────────────────────────
+  # SECURITY SCHEMES
+  # ──────────────────────────────────────────────
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT access token obtained from `/auth/login` or `/auth/register`.
+        Include as: `Authorization: Bearer <token>`
+
+  # ──────────────────────────────────────────────
+  # PARAMETERS
+  # ──────────────────────────────────────────────
+  parameters:
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    RideId:
+      name: rideId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    BookingId:
+      name: bookingId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    RatingId:
+      name: ratingId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    NotificationId:
+      name: notificationId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    VehicleId:
+      name: vehicleId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ContactId:
+      name: contactId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    SessionId:
+      name: sessionId
+      in: path
+      required: true
+      schema:
+        type: string
+    AlertId:
+      name: alertId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    Page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    SortBy:
+      name: sortBy
+      in: query
+      schema:
+        type: string
+        maxLength: 50
+    SortOrder:
+      name: sortOrder
+      in: query
+      schema:
+        type: string
+        enum: [asc, desc]
+        default: desc
+
+  # ──────────────────────────────────────────────
+  # SCHEMAS
+  # ──────────────────────────────────────────────
+  schemas:
+    # ── Response Wrappers ──────────────────────
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: Operation successful
+        data:
+          type: object
+          nullable: true
+        timestamp:
+          type: string
+          format: date-time
+      required: [success, message, timestamp]
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              example: VALIDATION_ERROR
+            message:
+              type: string
+              example: Validation failed
+            details:
+              type: object
+              nullable: true
+        timestamp:
+          type: string
+          format: date-time
+      required: [success, error, timestamp]
+
+    PaginationMeta:
+      type: object
+      properties:
+        pagination:
+          type: object
+          properties:
+            page:
+              type: integer
+              example: 1
+            limit:
+              type: integer
+              example: 20
+            total:
+              type: integer
+              example: 100
+            totalPages:
+              type: integer
+              example: 5
+            hasNextPage:
+              type: boolean
+            hasPrevPage:
+              type: boolean
+            nextPage:
+              type: integer
+              nullable: true
+            prevPage:
+              type: integer
+              nullable: true
+
+    # ── Domain Models ──────────────────────────
+    User:
+      type: object
+      properties:
+        userId:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        firstName:
+          type: string
+          example: John
+        lastName:
+          type: string
+          example: Doe
+        phone:
+          type: string
+          example: "08012345678"
+        role:
+          type: string
+          enum: [student, staff, admin]
+        matricNumber:
+          type: string
+          example: "19/55EC/001"
+          nullable: true
+        staffId:
+          type: string
+          nullable: true
+        department:
+          type: string
+          nullable: true
+        faculty:
+          type: string
+          nullable: true
+        profilePhoto:
+          type: string
+          nullable: true
+        bio:
+          type: string
+          nullable: true
+        isDriver:
+          type: boolean
+        isVerified:
+          type: boolean
+        status:
+          type: string
+          enum: [active, suspended, banned, pending]
+        averageRating:
+          type: number
+          nullable: true
+        totalRides:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    AuthTokens:
+      type: object
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        expiresIn:
+          type: integer
+          description: Token expiry in seconds
+        tokenType:
+          type: string
+          example: Bearer
+
+    Vehicle:
+      type: object
+      properties:
+        vehicleId:
+          type: string
+          format: uuid
+        make:
+          type: string
+          example: Toyota
+        model:
+          type: string
+          example: Corolla
+        year:
+          type: integer
+          example: 2020
+        color:
+          type: string
+          example: White
+        plateNumber:
+          type: string
+          example: KWL-123-AB
+        capacity:
+          type: integer
+          minimum: 1
+          maximum: 7
+        vehicleType:
+          type: string
+          enum: [sedan, suv, minivan, hatchback]
+        insuranceNumber:
+          type: string
+          nullable: true
+        insuranceExpiry:
+          type: string
+          format: date
+          nullable: true
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    Location:
+      type: object
+      required: [address, coordinates]
+      properties:
+        address:
+          type: string
+          maxLength: 500
+        coordinates:
+          type: object
+          required: [latitude, longitude]
+          properties:
+            latitude:
+              type: number
+              minimum: -90
+              maximum: 90
+            longitude:
+              type: number
+              minimum: -180
+              maximum: 180
+        placeId:
+          type: string
+          nullable: true
+        landmark:
+          type: string
+          nullable: true
+
+    PickupPoint:
+      type: object
+      properties:
+        pickupPointId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        location:
+          $ref: '#/components/schemas/Location'
+        estimatedTime:
+          type: string
+          pattern: '^([01]?[0-9]|2[0-3]):[0-5][0-9]$'
+        orderIndex:
+          type: integer
+
+    Ride:
+      type: object
+      properties:
+        rideId:
+          type: string
+          format: uuid
+        driverId:
+          type: string
+          format: uuid
+        departureDate:
+          type: string
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+        departureTime:
+          type: string
+          pattern: '^([01]?[0-9]|2[0-3]):[0-5][0-9]$'
+        startLocation:
+          $ref: '#/components/schemas/Location'
+        endLocation:
+          $ref: '#/components/schemas/Location'
+        pickupPoints:
+          type: array
+          items:
+            $ref: '#/components/schemas/PickupPoint'
+        availableSeats:
+          type: integer
+          minimum: 0
+          maximum: 7
+        totalSeats:
+          type: integer
+        pricePerSeat:
+          type: number
+          minimum: 100
+          maximum: 5000
+        waitTimeMinutes:
+          type: integer
+          minimum: 5
+          maximum: 15
+        status:
+          type: string
+          enum: [active, in_progress, completed, cancelled]
+        notes:
+          type: string
+          nullable: true
+        isRecurring:
+          type: boolean
+        driver:
+          $ref: '#/components/schemas/User'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Booking:
+      type: object
+      properties:
+        bookingId:
+          type: string
+          format: uuid
+        rideId:
+          type: string
+          format: uuid
+        passengerId:
+          type: string
+          format: uuid
+        pickupPointId:
+          type: string
+          format: uuid
+          nullable: true
+        seats:
+          type: integer
+          minimum: 1
+          maximum: 4
+        totalAmount:
+          type: number
+        paymentMethod:
+          type: string
+          enum: [cash]
+        paymentStatus:
+          type: string
+          enum: [pending, confirmed, refunded]
+        status:
+          type: string
+          enum: [pending, confirmed, in_progress, completed, cancelled, no_show]
+        verificationCode:
+          type: string
+          description: 6-digit code for passenger verification
+        notes:
+          type: string
+          nullable: true
+        cancellationReason:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Rating:
+      type: object
+      properties:
+        ratingId:
+          type: string
+          format: uuid
+        bookingId:
+          type: string
+          format: uuid
+        raterId:
+          type: string
+          format: uuid
+        ratedUserId:
+          type: string
+          format: uuid
+        score:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+          nullable: true
+        tags:
+          type: array
+          items:
+            type: string
+            enum: [punctual, friendly, clean_car, safe_driver, good_music]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Notification:
+      type: object
+      properties:
+        notificationId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        message:
+          type: string
+        type:
+          type: string
+        isRead:
+          type: boolean
+        data:
+          type: object
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    EmergencyContact:
+      type: object
+      properties:
+        contactId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        phone:
+          type: string
+        relationship:
+          type: string
+        email:
+          type: string
+          nullable: true
+
+    # ── Request Bodies ─────────────────────────
+    RegisterRequest:
+      type: object
+      required: [email, password, confirmPassword, firstName, lastName, phone, role]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 255
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+          description: Must contain at least 1 uppercase, 1 lowercase, and 1 number
+        confirmPassword:
+          type: string
+        firstName:
+          type: string
+          minLength: 2
+          maxLength: 50
+        lastName:
+          type: string
+          minLength: 2
+          maxLength: 50
+        phone:
+          type: string
+          pattern: '^(\+?234|0)[789][01]\d{8}$'
+        role:
+          type: string
+          enum: [student, staff]
+        matricNumber:
+          type: string
+          pattern: '^\d{2}/\d{2}[A-Z]{2}/\d{3}$'
+          description: Required for students (e.g., 19/55EC/001)
+        staffId:
+          type: string
+          pattern: '^[A-Z]{2,4}/\d{4}/\d{3,4}$'
+          description: Required for staff (e.g., SS/2020/001)
+        department:
+          type: string
+          maxLength: 100
+        faculty:
+          type: string
+          maxLength: 100
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    EmailRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+
+    ResetPasswordRequest:
+      type: object
+      required: [token, password, confirmPassword]
+      properties:
+        token:
+          type: string
+        password:
+          type: string
+          minLength: 8
+        confirmPassword:
+          type: string
+
+    ChangePasswordRequest:
+      type: object
+      required: [currentPassword, newPassword, confirmPassword]
+      properties:
+        currentPassword:
+          type: string
+        newPassword:
+          type: string
+          minLength: 8
+        confirmPassword:
+          type: string
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        firstName:
+          type: string
+          minLength: 2
+          maxLength: 50
+        lastName:
+          type: string
+          minLength: 2
+          maxLength: 50
+        phone:
+          type: string
+          pattern: '^(\+?234|0)[789][01]\d{8}$'
+        department:
+          type: string
+          maxLength: 100
+        faculty:
+          type: string
+          maxLength: 100
+        profilePhoto:
+          type: string
+          format: uri
+          maxLength: 500
+        bio:
+          type: string
+          maxLength: 500
+
+    DriverRegistrationRequest:
+      type: object
+      required: [licenseNumber, licenseExpiry, vehicle]
+      properties:
+        licenseNumber:
+          type: string
+          maxLength: 50
+        licenseExpiry:
+          type: string
+          format: date
+          description: Must be in the future
+        vehicle:
+          type: object
+          required: [make, model, year, color, plateNumber, capacity, vehicleType]
+          properties:
+            make:
+              type: string
+              maxLength: 50
+            model:
+              type: string
+              maxLength: 50
+            year:
+              type: integer
+              minimum: 2000
+            color:
+              type: string
+              maxLength: 30
+            plateNumber:
+              type: string
+              pattern: '^[A-Z]{2,3}-\d{3}-[A-Z]{2}$'
+            capacity:
+              type: integer
+              minimum: 1
+              maximum: 7
+            vehicleType:
+              type: string
+              enum: [sedan, suv, minivan, hatchback]
+
+    CreateVehicleRequest:
+      type: object
+      required: [make, model, year, color, plateNumber, capacity, vehicleType]
+      properties:
+        make:
+          type: string
+          maxLength: 50
+        model:
+          type: string
+          maxLength: 50
+        year:
+          type: integer
+          minimum: 2000
+        color:
+          type: string
+          maxLength: 30
+        plateNumber:
+          type: string
+          pattern: '^[A-Z]{2,3}-\d{3}-[A-Z]{2}$'
+        capacity:
+          type: integer
+          minimum: 1
+          maximum: 7
+        vehicleType:
+          type: string
+          enum: [sedan, suv, minivan, hatchback]
+        insuranceNumber:
+          type: string
+          maxLength: 50
+        insuranceExpiry:
+          type: string
+          format: date
+
+    UpdateVehicleRequest:
+      type: object
+      properties:
+        color:
+          type: string
+          maxLength: 30
+        capacity:
+          type: integer
+          minimum: 1
+          maximum: 7
+        insuranceNumber:
+          type: string
+          maxLength: 50
+        insuranceExpiry:
+          type: string
+          format: date
+        isActive:
+          type: boolean
+
+    EmergencyContactRequest:
+      type: object
+      required: [name, phone, relationship]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+        phone:
+          type: string
+          pattern: '^(\+?234|0)[789][01]\d{8}$'
+        relationship:
+          type: string
+          maxLength: 50
+        email:
+          type: string
+          format: email
+          maxLength: 255
+
+    CreateRideRequest:
+      type: object
+      required: [departureDate, departureTime, startLocation, endLocation, availableSeats, pricePerSeat]
+      properties:
+        departureDate:
+          type: string
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+        departureTime:
+          type: string
+          pattern: '^([01]?[0-9]|2[0-3]):[0-5][0-9]$'
+        startLocation:
+          $ref: '#/components/schemas/Location'
+        endLocation:
+          $ref: '#/components/schemas/Location'
+        pickupPoints:
+          type: array
+          maxItems: 5
+          items:
+            type: object
+            required: [name, location, estimatedTime]
+            properties:
+              name:
+                type: string
+                maxLength: 200
+              location:
+                $ref: '#/components/schemas/Location'
+              estimatedTime:
+                type: string
+                pattern: '^([01]?[0-9]|2[0-3]):[0-5][0-9]$'
+              orderIndex:
+                type: integer
+                minimum: 0
+        availableSeats:
+          type: integer
+          minimum: 1
+          maximum: 7
+        pricePerSeat:
+          type: number
+          minimum: 100
+          maximum: 5000
+        waitTimeMinutes:
+          type: integer
+          minimum: 5
+          maximum: 15
+          default: 10
+        notes:
+          type: string
+          maxLength: 500
+        isRecurring:
+          type: boolean
+          default: false
+        recurringDays:
+          type: array
+          description: Days of week (0=Sunday). Required when isRecurring is true.
+          items:
+            type: integer
+            minimum: 0
+            maximum: 6
+        recurringEndDate:
+          type: string
+          format: date
+          description: Required when isRecurring is true
+
+    UpdateRideRequest:
+      type: object
+      properties:
+        departureTime:
+          type: string
+          pattern: '^([01]?[0-9]|2[0-3]):[0-5][0-9]$'
+        availableSeats:
+          type: integer
+          minimum: 1
+          maximum: 7
+        pricePerSeat:
+          type: number
+          minimum: 100
+          maximum: 5000
+        waitTimeMinutes:
+          type: integer
+          minimum: 5
+          maximum: 15
+        notes:
+          type: string
+          maxLength: 500
+        status:
+          type: string
+          enum: [active, cancelled]
+        cancellationReason:
+          type: string
+          maxLength: 500
+          description: Required when status is cancelled
+
+    CreatePickupPointRequest:
+      type: object
+      required: [name, location, estimatedTime]
+      properties:
+        name:
+          type: string
+          maxLength: 200
+        location:
+          $ref: '#/components/schemas/Location'
+        estimatedTime:
+          type: string
+          pattern: '^([01]?[0-9]|2[0-3]):[0-5][0-9]$'
+
+    CreateBookingRequest:
+      type: object
+      required: [rideId]
+      properties:
+        rideId:
+          type: string
+          format: uuid
+        pickupPointId:
+          type: string
+          format: uuid
+        seats:
+          type: integer
+          minimum: 1
+          maximum: 4
+          default: 1
+        notes:
+          type: string
+          maxLength: 500
+        paymentMethod:
+          type: string
+          enum: [cash]
+          default: cash
+
+    CreateRatingRequest:
+      type: object
+      required: [bookingId, score]
+      properties:
+        bookingId:
+          type: string
+          format: uuid
+        score:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+          maxLength: 500
+        tags:
+          type: array
+          maxItems: 5
+          items:
+            type: string
+            enum: [punctual, friendly, clean_car, safe_driver, good_music]
+
+    NotificationPreferences:
+      type: object
+      properties:
+        email:
+          type: boolean
+        push:
+          type: boolean
+        sms:
+          type: boolean
+        rideReminders:
+          type: boolean
+        bookingUpdates:
+          type: boolean
+        promotions:
+          type: boolean
+
+    # ── Error Code Reference ───────────────────
+    ErrorCode:
+      type: string
+      description: Application error codes
+      enum:
+        # General
+        - INTERNAL_ERROR
+        - BAD_REQUEST
+        - VALIDATION_ERROR
+        - SERVICE_UNAVAILABLE
+        - RATE_LIMIT_EXCEEDED
+        # Auth
+        - UNAUTHORIZED
+        - INVALID_CREDENTIALS
+        - MISSING_TOKEN
+        - INVALID_TOKEN
+        - EXPIRED_TOKEN
+        - TOKEN_REVOKED
+        - INVALID_REFRESH_TOKEN
+        - SESSION_EXPIRED
+        - ACCOUNT_NOT_VERIFIED
+        - ACCOUNT_SUSPENDED
+        - ACCOUNT_BANNED
+        - WRONG_PASSWORD
+        - PASSWORD_RESET_EXPIRED
+        - INVALID_VERIFICATION_CODE
+        # Authorization
+        - FORBIDDEN
+        - INSUFFICIENT_PERMISSIONS
+        - ROLE_REQUIRED
+        - DRIVER_ONLY
+        - ADMIN_ONLY
+        - NOT_OWNER
+        - DRIVER_NOT_VERIFIED
+        - DRIVER_REJECTED
+        # User
+        - USER_NOT_FOUND
+        - EMAIL_EXISTS
+        - PHONE_EXISTS
+        - MATRIC_NUMBER_EXISTS
+        - STAFF_ID_EXISTS
+        - ALREADY_DRIVER
+        # Ride
+        - RIDE_NOT_FOUND
+        - RIDE_ALREADY_CANCELLED
+        - RIDE_ALREADY_STARTED
+        - RIDE_ALREADY_COMPLETED
+        - NO_SEATS_AVAILABLE
+        - DEPARTURE_IN_PAST
+        - DEPARTURE_TOO_FAR
+        - INVALID_ROUTE
+        - CANCELLATION_DEADLINE_PASSED
+        # Booking
+        - BOOKING_NOT_FOUND
+        - ALREADY_BOOKED
+        - BOOKING_ALREADY_CANCELLED
+        - BOOKING_ALREADY_COMPLETED
+        - CANNOT_BOOK_OWN_RIDE
+        - TOO_MANY_SEATS
+        - INVALID_PASSENGER_CODE
+        - RIDE_NOT_STARTED
+        - CANCELLATION_NOT_ALLOWED
+        - NO_SHOW
+        # Vehicle
+        - VEHICLE_NOT_FOUND
+        - PLATE_NUMBER_EXISTS
+        - INVALID_PLATE_FORMAT
+        - DOCUMENT_EXPIRED
+        - CAPACITY_EXCEEDED
+        # Rating
+        - RATING_NOT_FOUND
+        - ALREADY_RATED
+        - BOOKING_NOT_COMPLETED
+        - INVALID_SCORE
+        # Notification
+        - NOTIFICATION_NOT_FOUND
+        - NOTIFICATION_SEND_FAILED
+
+  # ──────────────────────────────────────────────
+  # RESPONSES
+  # ──────────────────────────────────────────────
+  responses:
+    Success:
+      description: Operation successful
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SuccessResponse'
+
+    Created:
+      description: Resource created
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SuccessResponse'
+
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: BAD_REQUEST
+              message: Invalid request
+            timestamp: "2026-02-27T12:00:00.000Z"
+
+    Unauthorized:
+      description: Authentication required or invalid token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: UNAUTHORIZED
+              message: Authentication required
+            timestamp: "2026-02-27T12:00:00.000Z"
+
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: FORBIDDEN
+              message: You do not have permission to perform this action
+            timestamp: "2026-02-27T12:00:00.000Z"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: NOT_FOUND
+              message: Resource not found
+            timestamp: "2026-02-27T12:00:00.000Z"
+
+    Conflict:
+      description: Resource conflict (e.g., duplicate email)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: CONFLICT
+              message: Resource conflict
+            timestamp: "2026-02-27T12:00:00.000Z"
+
+    ValidationError:
+      description: Validation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: VALIDATION_ERROR
+              message: Validation failed
+              details:
+                - field: email
+                  message: email must be a valid email address
+                  type: string.email
+            timestamp: "2026-02-27T12:00:00.000Z"
+
+    TooManyRequests:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: RATE_LIMIT_EXCEEDED
+              message: Too many requests. Please try again later
+              details:
+                retryAfter: 60
+            timestamp: "2026-02-27T12:00:00.000Z"

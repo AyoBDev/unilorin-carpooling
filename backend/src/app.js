@@ -15,6 +15,9 @@ const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
 
+const swaggerUi = require('swagger-ui-express');
+const YAML = require('yamljs');
+const path = require('path');
 const routes = require('./api/routes');
 const { requestLogger, correlationId } = require('./api/middlewares/logging.middleware');
 const {
@@ -42,7 +45,7 @@ app.use(
         defaultSrc: ["'self'"],
         styleSrc: ["'self'", "'unsafe-inline'"],
         imgSrc: ["'self'", 'data:', 'https:'],
-        scriptSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"],
       },
     },
     crossOriginEmbedderPolicy: false,
@@ -85,6 +88,12 @@ app.use('/api', apiLimiter);
 // ─── INPUT SANITISATION ────────────────────────────────────────
 app.use(sanitizeBody);
 app.use(stripHtmlFromBody);
+
+// ─── API DOCUMENTATION ────────────────────────────────────────
+const swaggerDocument = YAML.load(path.join(__dirname, '../docs/openapi.yaml'));
+app.use('/api/v1/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument, {
+  customSiteTitle: 'PSRide API Docs',
+}));
 
 // ─── API ROUTES ────────────────────────────────────────────────
 app.use('/api/v1', routes);

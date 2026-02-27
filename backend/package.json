@@ -57,8 +57,10 @@
     "nanoid": "^5.1.6",
     "redis": "^5.10.0",
     "serverless-http": "^4.0.0",
+    "swagger-ui-express": "^5.0.1",
     "uuid": "^13.0.0",
-    "winston": "^3.19.0"
+    "winston": "^3.19.0",
+    "yamljs": "^0.3.0"
   },
   "devDependencies": {
     "@babel/core": "^7.28.6",
