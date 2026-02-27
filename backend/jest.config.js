@@ -3,13 +3,12 @@ module.exports = {
   roots: ['<rootDir>/src', '<rootDir>/tests'],
   testMatch: ['**/__tests__/**/*.js', '**/?(*.)+(spec|test).js'],
   collectCoverageFrom: ['src/**/*.js', '!src/**/index.js', '!src/**/*.config.js'],
-  // TODO: Raise to 80% as test coverage grows
   coverageThreshold: {
     global: {
-      branches: 5,
-      functions: 5,
-      lines: 10,
-      statements: 10,
+      branches: 15,
+      functions: 22,
+      lines: 28,
+      statements: 28,
     },
   },
   moduleNameMapper: {
