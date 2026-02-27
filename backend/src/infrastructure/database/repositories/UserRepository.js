@@ -1117,6 +1117,47 @@ class UserRepository {
     }));
   }
 
+  // ── Web Push Subscriptions ────────────────────────────
+
+  async addPushSubscription(userId, subscription) {
+    // subscription = { endpoint, keys: { p256dh, auth } }
+    // Store keyed by endpoint so duplicates overwrite cleanly
+    const user = await this.getById(userId, true);
+    const existing = user?.pushSubscriptions || [];
+    const filtered = existing.filter((s) => s.endpoint !== subscription.endpoint);
+    const updated = [...filtered, { ...subscription, registeredAt: new Date().toISOString() }];
+
+    await docClient.send(new UpdateCommand({
+      TableName: this.tableName,
+      Key: this._generateKeys(userId),
+      UpdateExpression: 'SET pushSubscriptions = :subs, updatedAt = :now',
+      ExpressionAttributeValues: {
+        ':subs': updated,
+        ':now': new Date().toISOString(),
+      },
+    }));
+  }
+
+  async removePushSubscription(userId, endpoint) {
+    const user = await this.getById(userId, true);
+    const updated = (user?.pushSubscriptions || []).filter((s) => s.endpoint !== endpoint);
+
+    await docClient.send(new UpdateCommand({
+      TableName: this.tableName,
+      Key: this._generateKeys(userId),
+      UpdateExpression: 'SET pushSubscriptions = :subs, updatedAt = :now',
+      ExpressionAttributeValues: {
+        ':subs': updated,
+        ':now': new Date().toISOString(),
+      },
+    }));
+  }
+
+  async getPushSubscriptions(userId) {
+    const user = await this.getById(userId, true);
+    return user?.pushSubscriptions || [];
+  }
+
   // ── Profile Update ────────────────────────────────────
 
   async updateProfile(userId, updates) {

@@ -604,18 +604,24 @@ class NotificationService {
    */
   async _sendPushNotification(userId, notification) {
     try {
-      // Get user's push tokens
-      const user = await this.userRepository.findById(userId);
-      const pushTokens = user?.pushTokens || [];
+      const subscriptions = await this.userRepository.getPushSubscriptions(userId);
 
-      if (pushTokens.length === 0) {
-        logger.debug('No push tokens for user', { userId });
-        return { success: false, reason: 'no_tokens' };
+      if (subscriptions.length === 0) {
+        logger.debug('No push subscriptions for user', { userId });
+        return { success: false, reason: 'no_subscriptions' };
       }
 
-      // In production, integrate with Firebase Cloud Messaging or AWS SNS
       const results = await Promise.allSettled(
-        pushTokens.map((token) => this._sendPushViaProvider(token, notification)),
+        subscriptions.map((sub) => this._sendPushViaProvider(sub, notification)),
+      );
+
+      // Remove expired/invalid subscriptions (410 Gone from push service)
+      const expired = results
+        .map((r, i) => ({ result: r, sub: subscriptions[i] }))
+        .filter(({ result }) => result.status === 'rejected' && result.reason?.statusCode === 410);
+
+      await Promise.allSettled(
+        expired.map(({ sub }) => this.userRepository.removePushSubscription(userId, sub.endpoint)),
       );
 
       const successCount = results.filter((r) => r.status === 'fulfilled').length;
@@ -624,14 +630,10 @@ class NotificationService {
         action: NOTIFICATION_EVENTS.PUSH_SENT,
         userId,
         successCount,
-        totalTokens: pushTokens.length,
+        total: subscriptions.length,
       });
 
-      return {
-        success: successCount > 0,
-        sent: successCount,
-        total: pushTokens.length,
-      };
+      return { success: successCount > 0, sent: successCount, total: subscriptions.length };
     } catch (error) {
       logger.error('Push notification failed', {
         action: 'PUSH_SEND_FAILED',
@@ -643,42 +645,45 @@ class NotificationService {
   }
 
   /**
-   * Register push token for user
+   * Register a Web Push subscription for a user (PWA)
    * @param {string} userId - User ID
-   * @param {string} token - Push token
-   * @param {string} platform - Platform (ios, android, web)
+   * @param {Object} subscription - PushSubscription object from browser
+   * @param {string} subscription.endpoint - Push endpoint URL
+   * @param {Object} subscription.keys - { p256dh, auth }
    * @returns {Promise<Object>} Registration result
    */
-  async registerPushToken(userId, token, platform) {
-    logger.info('Registering push token', {
-      action: 'PUSH_TOKEN_REGISTERED',
+  async registerPushSubscription(userId, subscription) {
+    logger.info('Registering push subscription', {
+      action: 'PUSH_SUBSCRIPTION_REGISTERED',
       userId,
-      platform,
     });
 
-    await this.userRepository.addPushToken(userId, {
-      token,
-      platform,
-      registeredAt: formatDate(now()),
-    });
-
+    await this.userRepository.addPushSubscription(userId, subscription);
     return { success: true };
   }
 
   /**
-   * Remove push token
+   * Remove a Web Push subscription
    * @param {string} userId - User ID
-   * @param {string} token - Push token
+   * @param {string} endpoint - Subscription endpoint URL
    * @returns {Promise<Object>} Removal result
    */
-  async removePushToken(userId, token) {
-    logger.info('Removing push token', {
-      action: 'PUSH_TOKEN_REMOVED',
+  async removePushSubscription(userId, endpoint) {
+    logger.info('Removing push subscription', {
+      action: 'PUSH_SUBSCRIPTION_REMOVED',
       userId,
     });
 
-    await this.userRepository.removePushToken(userId, token);
+    await this.userRepository.removePushSubscription(userId, endpoint);
     return { success: true };
+  }
+
+  /**
+   * Get the VAPID public key for the frontend to use when subscribing
+   * @returns {string} VAPID public key
+   */
+  getVapidPublicKey() {
+    return process.env.VAPID_PUBLIC_KEY || null;
   }
 
   // ==================== In-App Notifications ====================
@@ -1553,15 +1558,34 @@ class NotificationService {
   }
 
   /**
-   * Send push via provider (placeholder)
+   * Send Web Push notification via web-push (VAPID)
+   * Requires env vars: VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_MAILTO
    * @private
    */
-  async _sendPushViaProvider(_token, _notification) {
-    // In production, this would call Firebase or AWS SNS
-    // Simulate push send
-    return {
-      messageId: `push_${randomUUID()}`,
-    };
+  async _sendPushViaProvider(subscription, notification) {
+    const webpush = require('web-push');
+
+    const publicKey = process.env.VAPID_PUBLIC_KEY;
+    const privateKey = process.env.VAPID_PRIVATE_KEY;
+    const mailto = process.env.VAPID_MAILTO || 'mailto:admin@psride.ng';
+
+    if (!publicKey || !privateKey) {
+      logger.warn('VAPID keys not set — skipping push send');
+      return { messageId: `skipped_${randomUUID()}` };
+    }
+
+    webpush.setVapidDetails(mailto, publicKey, privateKey);
+
+    const payload = JSON.stringify({
+      title: notification.title,
+      body: notification.body,
+      icon: '/icons/icon-192x192.png',
+      badge: '/icons/badge-72x72.png',
+      data: notification.data || {},
+    });
+
+    await webpush.sendNotification(subscription, payload);
+    return { messageId: `webpush_${randomUUID()}` };
   }
 
   /**

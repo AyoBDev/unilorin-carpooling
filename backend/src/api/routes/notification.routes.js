@@ -11,6 +11,11 @@ const router = Router();
 
 router.use(authenticate);
 
+// Push subscriptions (PWA Web Push)
+router.get('/push/vapid-key', NotificationController.getVapidKey);
+router.post('/push/subscribe', NotificationController.subscribePush);
+router.post('/push/unsubscribe', NotificationController.unsubscribePush);
+
 router.get('/', NotificationController.getNotifications);
 router.get('/unread-count', NotificationController.getUnreadCount);
 router.get('/preferences', NotificationController.getPreferences);

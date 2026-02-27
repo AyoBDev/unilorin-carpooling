@@ -29,6 +29,11 @@ class NotificationController {
     this.getPreferences = this.getPreferences.bind(this);
     this.updatePreferences = this.updatePreferences.bind(this);
 
+    // Push
+    this.getVapidKey = this.getVapidKey.bind(this);
+    this.subscribePush = this.subscribePush.bind(this);
+    this.unsubscribePush = this.unsubscribePush.bind(this);
+
     // Admin routes
     this.adminSendNotification = this.adminSendNotification.bind(this);
     this.adminSendBulkNotification = this.adminSendBulkNotification.bind(this);
@@ -183,6 +188,61 @@ class NotificationController {
       const preferences = await this.notificationService.updatePreferences(userId, req.body);
 
       return success(res, 'Preferences updated', { preferences });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  // ─── Push Notifications ──────────────────────────────────────
+
+  /**
+   * Get VAPID public key (needed by frontend before subscribing)
+   * GET /api/v1/notifications/push/vapid-key
+   */
+  async getVapidKey(req, res, next) {
+    try {
+      const key = this.notificationService.getVapidPublicKey();
+      return success(res, 'VAPID public key', { vapidPublicKey: key });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  /**
+   * Register a Web Push subscription
+   * POST /api/v1/notifications/push/subscribe
+   *
+   * Body: { endpoint, keys: { p256dh, auth } }
+   */
+  async subscribePush(req, res, next) {
+    try {
+      const { userId } = req.user;
+      const { endpoint, keys } = req.body;
+
+      await this.notificationService.registerPushSubscription(userId, { endpoint, keys });
+
+      logger.info('Push subscription registered', { userId });
+      return success(res, 'Push subscription registered');
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  /**
+   * Remove a Web Push subscription
+   * POST /api/v1/notifications/push/unsubscribe
+   *
+   * Body: { endpoint }
+   */
+  async unsubscribePush(req, res, next) {
+    try {
+      const { userId } = req.user;
+      const { endpoint } = req.body;
+
+      await this.notificationService.removePushSubscription(userId, endpoint);
+
+      logger.info('Push subscription removed', { userId });
+      return success(res, 'Push subscription removed');
     } catch (error) {
       return next(error);
     }
