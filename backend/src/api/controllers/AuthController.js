@@ -130,11 +130,12 @@ class AuthController {
 
       const result = await this.authService.verifyEmail(token);
 
-      logger.info('Email verified', { userId: result.userId });
+      logger.info('Email verified', { userId: result.user?.userId });
 
-      return success(res, 'Email verified successfully', {
+      return success(res, result.message || 'Email verified successfully', {
         verified: true,
-        userId: result.userId,
+        alreadyVerified: result.alreadyVerified,
+        userId: result.user?.userId,
       });
     } catch (error) {
       return next(error);

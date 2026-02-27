@@ -39,8 +39,8 @@ const patterns = {
   // Nigerian phone number (08012345678 or +2348012345678)
   phone: /^(\+?234|0)[789][01]\d{8}$/,
 
-  // University of Ilorin matric number (e.g., 19/55EC/001, 20/30AB/123)
-  matricNumber: /^\d{2}\/\d{2}[A-Z]{2}\/\d{3}$/,
+  // University of Ilorin matric number (e.g., 21/52HP029, 19/56CS001)
+  matricNumber: /^\d{2}\/\d{2}[A-Z]{2,4}\d{3}$/,
 
   // Staff ID (e.g., SS/2020/001, ADM/2019/123)
   staffId: /^[A-Z]{2,4}\/\d{4}\/\d{3,4}$/,
@@ -82,7 +82,7 @@ const customValidators = {
   matricNumber: joi
     .string()
     .pattern(patterns.matricNumber)
-    .message('Invalid matric number format (e.g., 19/55EC/001)'),
+    .message('Invalid matric number format (e.g., 21/52HP029)'),
 
   /**
    * Validate staff ID

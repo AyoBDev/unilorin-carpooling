@@ -12,6 +12,7 @@ const {
   GetCommand,
   UpdateCommand,
   QueryCommand,
+  ScanCommand,
   BatchGetCommand,
 } = require('@aws-sdk/lib-dynamodb');
 
@@ -77,6 +78,8 @@ class UserRepository {
         designation = null, // For staff
         isDriver = false,
         profileImage = null,
+        verificationToken = null,
+        verificationExpiry = null,
         createdAt = new Date().toISOString(),
       } = userData;
 
@@ -138,7 +141,8 @@ class UserRepository {
 
         // Verification
         emailVerified: false,
-        emailVerificationToken: null,
+        emailVerificationToken: verificationToken,
+        verificationTokenExpiry: verificationExpiry,
         phoneVerified: false,
 
         // Status
@@ -157,15 +161,6 @@ class UserRepository {
         totalRatings: 0,
         ratingsAsDriver: [],
         ratingsAsPassenger: [],
-
-        // Preferences
-        preferences: {
-          smokingAllowed: false,
-          petsAllowed: false,
-          musicPreference: 'any',
-          conversationLevel: 'moderate',
-          acPreference: true,
-        },
 
         // Timestamps
         createdAt,
@@ -361,7 +356,6 @@ class UserRepository {
         'emailVerified',
         'phoneVerified',
         'status',
-        'preferences',
         'lastLoginAt',
       ];
 
@@ -998,10 +992,9 @@ class UserRepository {
       ExpressionAttributeValues: { ':type': 'USER', ':token': refreshToken },
     };
     try {
-      const result = await docClient.send(new QueryCommand(params));
+      const result = await docClient.send(new ScanCommand(params));
       return result.Items?.[0] || null;
     } catch {
-      // Fallback: not found
       return null;
     }
   }
@@ -1054,7 +1047,7 @@ class UserRepository {
       ExpressionAttributeValues: { ':type': 'USER', ':token': token },
     };
     try {
-      const result = await docClient.send(new QueryCommand(params));
+      const result = await docClient.send(new ScanCommand(params));
       return result.Items?.[0] || null;
     } catch {
       return null;
@@ -1081,7 +1074,7 @@ class UserRepository {
       ExpressionAttributeValues: { ':type': 'USER', ':token': token },
     };
     try {
-      const result = await docClient.send(new QueryCommand(params));
+      const result = await docClient.send(new ScanCommand(params));
       return result.Items?.[0] || null;
     } catch {
       return null;

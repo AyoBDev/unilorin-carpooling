@@ -100,7 +100,7 @@ class NotificationService {
 
     const emailData = {
       to: user.email,
-      subject: 'Welcome to UniRide - University of Ilorin Carpooling',
+      subject: 'Welcome to PSRide - University of Ilorin Carpooling',
       template: EMAIL_TEMPLATES.WELCOME,
       data: {
         firstName: user.firstName,
@@ -129,7 +129,7 @@ class NotificationService {
 
     const emailData = {
       to: user.email,
-      subject: 'Verify Your Email - UniRide',
+      subject: 'Verify Your Email - PSRide',
       template: EMAIL_TEMPLATES.EMAIL_VERIFICATION,
       data: {
         firstName: user.firstName,
@@ -158,7 +158,7 @@ class NotificationService {
 
     const emailData = {
       to: user.email,
-      subject: 'Reset Your Password - UniRide',
+      subject: 'Reset Your Password - PSRide',
       template: EMAIL_TEMPLATES.PASSWORD_RESET,
       data: {
         firstName: user.firstName,
@@ -392,7 +392,7 @@ class NotificationService {
     // In-app notification
     await this._createInAppNotification(booking.passengerId, {
       title: 'Trip Completed',
-      message: 'Thank you for riding with UniRide! Please rate your experience.',
+      message: 'Thank you for riding with PSRide! Please rate your experience.',
       category: NOTIFICATION_CATEGORY.RATING,
       data: { bookingId: booking.bookingId, action: 'rate' },
     });
@@ -574,7 +574,7 @@ class NotificationService {
    * @returns {Promise<Object>} Send result
    */
   async sendVerificationSMS(phone, code, userId) {
-    const message = `Your UniRide verification code is: ${code}. Valid for 10 minutes. Do not share this code.`;
+    const message = `Your PSRide verification code is: ${code}. Valid for 10 minutes. Do not share this code.`;
     return this.sendSMS(phone, message, userId);
   }
 
@@ -590,7 +590,7 @@ class NotificationService {
       return { success: false, reason: 'no_phone' };
     }
 
-    const message = `UniRide Booking: Your code is ${booking.verificationCode}. Show this to driver ${booking.driver.firstName}. Ride: ${booking.rideDate} ${booking.rideTime}. Pay ₦${booking.totalAmount} cash.`;
+    const message = `PSRide Booking: Your code is ${booking.verificationCode}. Show this to driver ${booking.driver.firstName}. Ride: ${booking.rideDate} ${booking.rideTime}. Pay ₦${booking.totalAmount} cash.`;
     return this.sendSMS(phone, message, booking.passengerId);
   }
 
@@ -1153,33 +1153,403 @@ class NotificationService {
   }
 
   /**
-   * Send email via AWS SES (placeholder)
+   * Send email via AWS SES
+   * Requires env vars: SES_FROM_EMAIL, AWS_REGION
    * @private
    */
-  async _sendEmailViaProvider(_emailData) {
-    // In production, this would call AWS SES
-    // const ses = new AWS.SES();
-    // return ses.sendEmail(params).promise();
+  async _sendEmailViaProvider(emailData) {
+    const fromEmail = process.env.SES_FROM_EMAIL;
 
-    // Simulate email send
-    return {
-      messageId: `sim_${randomUUID()}`,
-    };
+    if (!fromEmail) {
+      logger.warn('SES_FROM_EMAIL not set — skipping real email send', {
+        template: emailData.template,
+        to: emailData.to,
+      });
+      return { messageId: `skipped_${randomUUID()}` };
+    }
+
+    const { SESClient, SendEmailCommand } = require('@aws-sdk/client-ses');
+    const ses = new SESClient({ region: process.env.AWS_REGION || 'eu-west-1' });
+
+    const html = this._buildEmailHtml(emailData.template, emailData.data);
+    const text = this._buildEmailText(emailData.template, emailData.data);
+
+    const command = new SendEmailCommand({
+      Source: fromEmail,
+      Destination: { ToAddresses: [emailData.to] },
+      Message: {
+        Subject: { Data: emailData.subject, Charset: 'UTF-8' },
+        Body: {
+          Html: { Data: html, Charset: 'UTF-8' },
+          Text: { Data: text, Charset: 'UTF-8' },
+        },
+      },
+    });
+
+    const result = await ses.send(command);
+    return { messageId: result.MessageId };
   }
 
   /**
-   * Send SMS via provider (placeholder)
+   * Send SMS via AWS SNS
    * @private
    */
-  async _sendSMSViaProvider(_phone, _message) {
-    // In production, this would call AWS SNS or African SMS gateway
-    // const sns = new AWS.SNS();
-    // return sns.publish({ PhoneNumber: phone, Message: message }).promise();
+  async _sendSMSViaProvider(phone, message) {
+    const { SNSClient, PublishCommand } = require('@aws-sdk/client-sns');
+    const sns = new SNSClient({ region: process.env.AWS_REGION || 'eu-west-1' });
 
-    // Simulate SMS send
-    return {
-      messageId: `sms_${randomUUID()}`,
-    };
+    const command = new PublishCommand({
+      PhoneNumber: phone,
+      Message: message,
+      MessageAttributes: {
+        'AWS.SNS.SMS.SenderID': {
+          DataType: 'String',
+          StringValue: 'PSRide',
+        },
+        'AWS.SNS.SMS.SMSType': {
+          DataType: 'String',
+          StringValue: 'Transactional',
+        },
+      },
+    });
+
+    const result = await sns.send(command);
+    return { messageId: result.MessageId };
+  }
+
+  /**
+   * Build styled HTML email body for a given template
+   * @private
+   */
+  _buildEmailHtml(template, data) {
+    // ── Shared design tokens ──────────────────────────────
+    const GREEN = '#1a7f37';
+    const LIGHT_GREEN = '#e6f4ea';
+    const RED = '#d93025';
+    const LIGHT_RED = '#fce8e6';
+    const GREY_BG = '#f6f6f6';
+    const TEXT = '#1f1f1f';
+    const MUTED = '#666666';
+
+    // ── Base layout wrapper ───────────────────────────────
+    const base = (content) => `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>PSRide</title>
+</head>
+<body style="margin:0;padding:0;background:${GREY_BG};font-family:Arial,Helvetica,sans-serif;color:${TEXT};">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:${GREY_BG};padding:32px 0;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+
+        <!-- Header -->
+        <tr>
+          <td style="background:${GREEN};padding:28px 40px;text-align:center;">
+            <h1 style="margin:0;color:#ffffff;font-size:28px;font-weight:700;letter-spacing:1px;">PSRide</h1>
+            <p style="margin:4px 0 0;color:rgba(255,255,255,0.85);font-size:13px;">University of Ilorin Carpooling</p>
+          </td>
+        </tr>
+
+        <!-- Body -->
+        <tr>
+          <td style="padding:36px 40px;">
+            ${content}
+          </td>
+        </tr>
+
+        <!-- Footer -->
+        <tr>
+          <td style="background:${GREY_BG};padding:20px 40px;text-align:center;border-top:1px solid #e0e0e0;">
+            <p style="margin:0;font-size:12px;color:${MUTED};">
+              University of Ilorin Carpooling Platform &nbsp;|&nbsp; Ilorin, Kwara State
+            </p>
+            <p style="margin:6px 0 0;font-size:11px;color:${MUTED};">
+              This email was sent to you because you have an account on PSRide.<br>
+              If you did not request this, please ignore it.
+            </p>
+          </td>
+        </tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+    // ── Reusable components ───────────────────────────────
+    const button = (label, url, color = GREEN) =>
+      `<table cellpadding="0" cellspacing="0" style="margin:28px 0;">
+        <tr>
+          <td style="background:${color};border-radius:6px;">
+            <a href="${url}" style="display:inline-block;padding:14px 32px;color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;">${label}</a>
+          </td>
+        </tr>
+      </table>`;
+
+    const infoRow = (label, value) =>
+      `<tr>
+        <td style="padding:8px 0;font-size:14px;color:${MUTED};width:160px;">${label}</td>
+        <td style="padding:8px 0;font-size:14px;font-weight:600;color:${TEXT};">${value}</td>
+      </tr>`;
+
+    const infoBox = (rows) =>
+      `<table width="100%" cellpadding="0" cellspacing="0" style="background:${GREY_BG};border-radius:6px;padding:16px 20px;margin:20px 0;">
+        ${rows}
+      </table>`;
+
+    const alertBox = (content, color = LIGHT_GREEN, border = GREEN) =>
+      `<div style="background:${color};border-left:4px solid ${border};border-radius:4px;padding:16px 20px;margin:20px 0;font-size:14px;">
+        ${content}
+      </div>`;
+
+    const greeting = (firstName) =>
+      `<p style="font-size:17px;font-weight:600;margin:0 0 12px;">Hi ${firstName},</p>`;
+
+    // ── Templates ─────────────────────────────────────────
+
+    if (template === EMAIL_TEMPLATES.WELCOME) {
+      return base(`
+        ${greeting(data.firstName)}
+        <p style="font-size:15px;margin:0 0 16px;line-height:1.6;">
+          Welcome to <strong>PSRide</strong> — the official carpooling platform for University of Ilorin!
+          You've joined as a <strong>${data.role}</strong>.
+        </p>
+        <p style="font-size:15px;margin:0 0 8px;">Please verify your email address to activate your account:</p>
+        ${button('Verify My Email', data.verificationUrl)}
+        ${alertBox(`<strong>Link expires in 24 hours.</strong> If it expires, you can request a new one from the app.`)}
+        <p style="font-size:13px;color:${MUTED};margin:24px 0 0;">
+          Once verified, you can book rides or (if you have a vehicle) apply to become a driver.
+        </p>
+      `);
+    }
+
+    if (template === EMAIL_TEMPLATES.EMAIL_VERIFICATION) {
+      return base(`
+        ${greeting(data.firstName)}
+        <p style="font-size:15px;margin:0 0 16px;line-height:1.6;">
+          We received a request to verify your email address. Click the button below to confirm it's you:
+        </p>
+        ${button('Verify Email Address', data.verificationUrl)}
+        ${alertBox(`<strong>This link expires in ${data.expiresIn || '24 hours'}.</strong>`)}
+        <p style="font-size:13px;color:${MUTED};margin:24px 0 0;">
+          If you didn't request this, you can safely ignore this email.
+        </p>
+      `);
+    }
+
+    if (template === EMAIL_TEMPLATES.PASSWORD_RESET) {
+      return base(`
+        ${greeting(data.firstName)}
+        <p style="font-size:15px;margin:0 0 16px;line-height:1.6;">
+          We received a request to reset your PSRide password. Click the button below to choose a new one:
+        </p>
+        ${button('Reset My Password', data.resetUrl, '#c0392b')}
+        ${alertBox(
+          `<strong>This link expires in ${data.expiresIn || '1 hour'}.</strong> If you didn't request a reset, your account is safe — just ignore this email.`,
+          LIGHT_RED,
+          RED,
+        )}
+      `);
+    }
+
+    if (template === EMAIL_TEMPLATES.BOOKING_CONFIRMATION) {
+      const paymentList = (data.paymentInstructions || [])
+        .map((item) => `<li style="margin:6px 0;font-size:14px;">${item}</li>`)
+        .join('');
+
+      return base(`
+        ${greeting(data.firstName)}
+        <p style="font-size:15px;margin:0 0 20px;line-height:1.6;">
+          Your ride booking is <strong style="color:${GREEN};">confirmed!</strong> Here are your trip details:
+        </p>
+        ${infoBox(`
+          ${infoRow('Reference', data.bookingReference)}
+          ${infoRow('Date', data.rideDate)}
+          ${infoRow('Time', data.rideTime)}
+          ${infoRow('Pickup', data.pickupLocation)}
+          ${infoRow('Destination', data.destination)}
+          ${infoRow('Seats', data.seats)}
+          ${infoRow('Driver', data.driverName)}
+          ${infoRow('Vehicle', data.vehicleInfo)}
+          ${infoRow('Total Fare', `₦${data.totalAmount}`)}
+        `)}
+        ${alertBox(`
+          <p style="margin:0 0 10px;font-weight:700;font-size:15px;">Your Verification Code</p>
+          <p style="margin:0;font-size:32px;font-weight:700;letter-spacing:6px;color:${GREEN};">${data.verificationCode}</p>
+          <p style="margin:8px 0 0;font-size:13px;">Show this code to your driver when boarding.</p>
+        `)}
+        <p style="font-size:15px;font-weight:600;margin:20px 0 10px;">Cash Payment Instructions</p>
+        <ul style="margin:0;padding-left:20px;">${paymentList}</ul>
+      `);
+    }
+
+    if (template === EMAIL_TEMPLATES.BOOKING_CANCELLED) {
+      return base(`
+        ${greeting(data.firstName)}
+        <p style="font-size:15px;margin:0 0 20px;line-height:1.6;">
+          We're sorry — a booking has been <strong style="color:${RED};">cancelled</strong>.
+        </p>
+        ${infoBox(`
+          ${infoRow('Reference', data.bookingReference)}
+          ${infoRow('Date', data.rideDate)}
+          ${infoRow('Time', data.rideTime)}
+          ${infoRow('Cancelled by', data.cancelledBy)}
+          ${infoRow('Reason', data.reason)}
+        `)}
+        <p style="font-size:14px;color:${MUTED};margin:20px 0 0;">
+          You can search for another available ride on the PSRide app.
+        </p>
+      `);
+    }
+
+    if (template === EMAIL_TEMPLATES.RIDE_REMINDER) {
+      return base(`
+        ${greeting(data.firstName)}
+        <p style="font-size:15px;margin:0 0 20px;line-height:1.6;">
+          Your ride is <strong>coming up in 1 hour!</strong> Here's what you need to know:
+        </p>
+        ${infoBox(`
+          ${infoRow('Departure', data.rideTime)}
+          ${infoRow('Pickup Point', data.pickupLocation)}
+          ${infoRow('Driver', data.driverName)}
+          ${infoRow('Driver Phone', data.driverPhone)}
+          ${infoRow('Vehicle', `${data.vehicleInfo} — ${data.plateNumber || 'TBA'}`)}
+        `)}
+        ${alertBox(`
+          <p style="margin:0 0 8px;font-weight:700;">Verification Code</p>
+          <p style="margin:0;font-size:28px;font-weight:700;letter-spacing:5px;color:${GREEN};">${data.verificationCode}</p>
+          <p style="margin:8px 0 0;font-size:13px;">${data.paymentReminder}</p>
+        `)}
+      `);
+    }
+
+    if (template === EMAIL_TEMPLATES.RIDE_COMPLETED) {
+      return base(`
+        ${greeting(data.firstName)}
+        <p style="font-size:15px;margin:0 0 20px;line-height:1.6;">
+          Your trip is complete! Thank you for riding with PSRide.
+        </p>
+        ${infoBox(`
+          ${infoRow('Date', data.rideDate)}
+          ${infoRow('Destination', data.destination)}
+          ${infoRow('Driver', data.driverName)}
+          ${infoRow('Amount Paid', `₦${data.amountPaid}`)}
+        `)}
+        <p style="font-size:15px;margin:20px 0 8px;">How was your experience? Rate your driver:</p>
+        ${button('Rate Your Driver ⭐', data.ratingUrl)}
+      `);
+    }
+
+    if (template === EMAIL_TEMPLATES.DRIVER_APPROVED) {
+      return base(`
+        ${greeting(data.firstName)}
+        ${alertBox(
+          `<strong style="font-size:16px;">Congratulations! Your driver account is now active.</strong>`,
+          LIGHT_GREEN,
+          GREEN,
+        )}
+        <p style="font-size:15px;margin:16px 0;line-height:1.6;">
+          You've been verified as a PSRide driver. You can now create ride offers and start earning.
+        </p>
+        <p style="font-size:14px;margin:0 0 8px;color:${MUTED};">What's next:</p>
+        <ul style="margin:0 0 20px;padding-left:20px;font-size:14px;line-height:2;">
+          <li>Set your available routes and seats</li>
+          <li>Schedule regular rides from home to campus</li>
+          <li>Passengers will book and pay you in cash</li>
+        </ul>
+        ${button('Create Your First Ride', data.createRideUrl)}
+      `);
+    }
+
+    if (template === EMAIL_TEMPLATES.DOCUMENT_REJECTED) {
+      return base(`
+        ${greeting(data.firstName)}
+        ${alertBox(
+          `<strong>Your document submission was not accepted.</strong>`,
+          LIGHT_RED,
+          RED,
+        )}
+        ${infoBox(`
+          ${infoRow('Document', data.documentType)}
+          ${infoRow('Reason', data.reason)}
+        `)}
+        <p style="font-size:15px;margin:20px 0 8px;">Please upload a new document to continue your driver verification:</p>
+        ${button('Upload New Document', data.uploadUrl)}
+      `);
+    }
+
+    if (template === EMAIL_TEMPLATES.SOS_ALERT) {
+      const rideInfo = data.rideInfo
+        ? `${infoRow('Driver', data.rideInfo.driverName)}
+           ${infoRow('Driver Phone', data.rideInfo.driverPhone)}
+           ${infoRow('Vehicle', `${data.rideInfo.vehicleInfo} (${data.rideInfo.plateNumber || 'N/A'})`)}` : '';
+
+      return base(`
+        ${alertBox(
+          `<strong style="font-size:16px;color:${RED};">🚨 EMERGENCY SOS ALERT</strong>`,
+          LIGHT_RED,
+          RED,
+        )}
+        <p style="font-size:15px;margin:0 0 16px;">Hi <strong>${data.contactName}</strong>,</p>
+        <p style="font-size:15px;margin:0 0 20px;line-height:1.6;">
+          <strong>${data.userName}</strong> has triggered an SOS emergency alert on the PSRide app.
+          Please contact them immediately.
+        </p>
+        ${infoBox(`
+          ${infoRow('Name', data.userName)}
+          ${infoRow('Phone', data.userPhone)}
+          ${infoRow('Time', data.timestamp)}
+          ${infoRow('Location', data.location)}
+          ${rideInfo}
+        `)}
+        ${button('View on Map', data.locationUrl, RED)}
+        <p style="font-size:13px;color:${MUTED};margin:20px 0 0;">
+          If you cannot reach them, please contact emergency services (112) immediately.
+        </p>
+      `);
+    }
+
+    // Generic fallback for template: null (admin sendNotification)
+    return base(`
+      <p style="font-size:15px;line-height:1.6;">${data.message || ''}</p>
+    `);
+  }
+
+  /**
+   * Build plain-text fallback for email
+   * @private
+   */
+  _buildEmailText(template, data) {
+    if (template === EMAIL_TEMPLATES.WELCOME || template === EMAIL_TEMPLATES.EMAIL_VERIFICATION) {
+      return `Hi ${data.firstName},\n\nVerify your email: ${data.verificationUrl}\n\nThis link expires in ${data.expiresIn || '24 hours'}.\n\n— PSRide`;
+    }
+    if (template === EMAIL_TEMPLATES.PASSWORD_RESET) {
+      return `Hi ${data.firstName},\n\nReset your password: ${data.resetUrl}\n\nExpires in ${data.expiresIn || '1 hour'}.\n\n— PSRide`;
+    }
+    if (template === EMAIL_TEMPLATES.BOOKING_CONFIRMATION) {
+      return `Hi ${data.firstName},\n\nBooking confirmed!\nRef: ${data.bookingReference}\nDate: ${data.rideDate} at ${data.rideTime}\nPickup: ${data.pickupLocation}\nDestination: ${data.destination}\nDriver: ${data.driverName}\nFare: ₦${data.totalAmount}\nVerification Code: ${data.verificationCode}\n\nPay cash to driver on boarding.\n\n— PSRide`;
+    }
+    if (template === EMAIL_TEMPLATES.BOOKING_CANCELLED) {
+      return `Hi ${data.firstName},\n\nYour booking (${data.bookingReference}) for ${data.rideDate} at ${data.rideTime} has been cancelled by ${data.cancelledBy}.\nReason: ${data.reason}\n\n— PSRide`;
+    }
+    if (template === EMAIL_TEMPLATES.RIDE_REMINDER) {
+      return `Hi ${data.firstName},\n\nYour ride is in 1 hour!\nTime: ${data.rideTime}\nPickup: ${data.pickupLocation}\nDriver: ${data.driverName} (${data.driverPhone})\nCode: ${data.verificationCode}\n${data.paymentReminder}\n\n— PSRide`;
+    }
+    if (template === EMAIL_TEMPLATES.RIDE_COMPLETED) {
+      return `Hi ${data.firstName},\n\nYour trip to ${data.destination} is complete. You paid ₦${data.amountPaid}.\nRate your driver: ${data.ratingUrl}\n\n— PSRide`;
+    }
+    if (template === EMAIL_TEMPLATES.DRIVER_APPROVED) {
+      return `Hi ${data.firstName},\n\nCongratulations! You are now a verified PSRide driver.\nCreate your first ride: ${data.createRideUrl}\n\n— PSRide`;
+    }
+    if (template === EMAIL_TEMPLATES.DOCUMENT_REJECTED) {
+      return `Hi ${data.firstName},\n\nYour ${data.documentType} was rejected.\nReason: ${data.reason}\nUpload a new document: ${data.uploadUrl}\n\n— PSRide`;
+    }
+    if (template === EMAIL_TEMPLATES.SOS_ALERT) {
+      return `EMERGENCY: ${data.userName} triggered an SOS alert.\nPhone: ${data.userPhone}\nLocation: ${data.locationUrl}\nTime: ${data.timestamp}\n\nContact emergency services (112) if unreachable.`;
+    }
+    return data.message || '';
   }
 
   /**

@@ -94,6 +94,10 @@ npx esbuild \
 # "handlers/apiHandler.handler"  → Lambda looks for module "apiHandler" ✓
 log "Renaming files for Lambda handler compatibility..."
 
+# Copy static assets required at runtime (YAML files, etc.)
+mkdir -p "$BUILD_DIR/docs"
+cp "$BACKEND_DIR/docs/openapi.yaml" "$BUILD_DIR/docs/"
+
 mv "$BUILD_DIR/handlers/api.handler.js"       "$BUILD_DIR/handlers/apiHandler.js"
 mv "$BUILD_DIR/handlers/scheduled.handler.js" "$BUILD_DIR/handlers/scheduledHandler.js"
 mv "$BUILD_DIR/triggers/dynamodb.trigger.js"  "$BUILD_DIR/triggers/dynamodbTrigger.js"

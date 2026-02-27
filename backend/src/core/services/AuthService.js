@@ -328,7 +328,7 @@ class AuthService {
       }
 
       // Check if token is expired
-      if (user.verificationExpiry && isExpired(user.verificationExpiry)) {
+      if (user.verificationTokenExpiry && isExpired(user.verificationTokenExpiry)) {
         throw new BadRequestError(
           'Verification token has expired. Please request a new one.',
           ERROR_CODES.AUTH_TOKEN_EXPIRED,
@@ -401,8 +401,8 @@ class AuthService {
 
       // Update user with new token
       await this.userRepository.updateVerificationToken(user.userId, {
-        verificationToken,
-        verificationExpiry: formatDate(verificationExpiry),
+        token: verificationToken,
+        expiresAt: formatDate(verificationExpiry),
       });
 
       logger.info('Verification email resent', {
@@ -1037,12 +1037,20 @@ class AuthService {
     delete sanitized.passwordHash;
     delete sanitized.verificationToken;
     delete sanitized.verificationExpiry;
+    delete sanitized.verificationTokenExpiry;
+    delete sanitized.emailVerificationToken;
     delete sanitized.passwordResetToken;
     delete sanitized.passwordResetExpiry;
     delete sanitized.loginAttempts;
     delete sanitized.lockedUntil;
     delete sanitized.refreshTokens;
+    delete sanitized.otpData;
     delete sanitized.otp;
+
+    // Remove non-essential fields from API responses
+    delete sanitized.preferences;
+    delete sanitized.ratingsAsDriver;
+    delete sanitized.ratingsAsPassenger;
 
     // Remove DynamoDB internal attributes
     delete sanitized.PK;

@@ -159,11 +159,13 @@ class Student extends User {
   }
 
   isValidMatricNumber(matricNumber) {
-    // Format: YY/XXXX/NNN where:
+    // Format: YY/NNCCCNNN where:
     // YY = year (2 digits)
-    // XXXX = faculty/department code
-    // NNN = serial number
-    const matricRegex = /^\d{2}\/[A-Z0-9]{2,5}\/\d{1,4}$/;
+    // NN = 2-digit number prefix
+    // CCC = 2-4 letter department/faculty code
+    // NNN = 3-digit serial number
+    // Example: 21/52HP029, 19/56CS001
+    const matricRegex = /^\d{2}\/\d{2}[A-Z]{2,4}\d{3}$/;
     return matricRegex.test(matricNumber);
   }
 
