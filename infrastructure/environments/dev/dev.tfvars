@@ -36,3 +36,21 @@ dynamodb_billing_mode = "PAY_PER_REQUEST"
 enable_nat_gateway = false
 single_nat_gateway = true
 vpc_cidr           = "10.0.0.0/16"
+
+# ── WAF (disabled in dev — enable for staging/prod) ──────
+enable_waf          = false
+waf_rate_limit      = 2000
+waf_auth_rate_limit = 100
+waf_blocked_ips     = []
+
+# ── Monitoring ────────────────────────────────────────────
+enable_monitoring      = true   # Dashboard always on; alarms suppressed in dev
+alarm_email            = ""     # Set to your email in staging/prod
+lambda_error_threshold = 5
+api_latency_threshold  = 3000
+
+# ── CDN (disabled in dev — CloudFront needs a real domain) ──
+enable_cdn          = false
+cdn_aliases         = []
+cdn_certificate_arn = null
+cdn_waf_acl_arn     = null

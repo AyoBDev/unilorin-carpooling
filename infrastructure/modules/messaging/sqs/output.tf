@@ -36,3 +36,8 @@ output "stream_dlq_url" {
   description = "URL of the stream failures DLQ"
   value       = aws_sqs_queue.stream_dlq.url
 }
+
+output "notification_dlq_name" {
+  description = "Name of the notification DLQ"
+  value       = aws_sqs_queue.notification_dlq.name
+}

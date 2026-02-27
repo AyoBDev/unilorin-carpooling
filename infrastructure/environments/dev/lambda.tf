@@ -259,3 +259,23 @@ output "lambda_log_groups" {
   description = "CloudWatch log group names for all Lambda functions"
   value       = module.lambda.log_group_names
 }
+
+output "dashboard_name" {
+  description = "CloudWatch operations dashboard name"
+  value       = var.enable_monitoring ? module.monitoring[0].dashboard_name : null
+}
+
+output "alert_topic_arn" {
+  description = "SNS topic ARN for CloudWatch alarm notifications"
+  value       = var.enable_monitoring ? module.monitoring[0].alert_topic_arn : null
+}
+
+output "cdn_domain" {
+  description = "CloudFront distribution domain name (null if CDN not enabled)"
+  value       = var.enable_cdn ? module.cdn[0].domain_name : null
+}
+
+output "waf_web_acl_arn" {
+  description = "WAF WebACL ARN (null if WAF not enabled)"
+  value       = var.enable_waf ? module.waf[0].web_acl_arn : null
+}
