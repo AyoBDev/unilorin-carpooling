@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -15,28 +15,28 @@
   <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
 
   <style>
-    /* ── shadcn/ui CSS variables (dark theme) ───────────────────── */
+    /* ── shadcn/ui CSS variables (light theme) ───────────────────── */
     :root {
-      --background:         0 0% 3.9%;
-      --foreground:         0 0% 98%;
-      --card:               0 0% 5%;
-      --card-foreground:    0 0% 98%;
-      --popover:            0 0% 5%;
-      --popover-foreground: 0 0% 98%;
-      --primary:            263 70% 50%;        /* #7C3AED */
-      --primary-foreground: 0 0% 100%;
-      --secondary:          0 0% 9%;
-      --secondary-foreground:0 0% 98%;
-      --muted:              0 0% 9%;
-      --muted-foreground:   0 0% 45%;
-      --accent:             263 40% 15%;
-      --accent-foreground:  263 70% 80%;
-      --destructive:        0 62% 30%;
+      --background:          0 0% 100%;
+      --foreground:          240 10% 3.9%;
+      --card:                0 0% 100%;
+      --card-foreground:     240 10% 3.9%;
+      --popover:             0 0% 100%;
+      --popover-foreground:  240 10% 3.9%;
+      --primary:             263 70% 50%;        /* #7C3AED */
+      --primary-foreground:  0 0% 100%;
+      --secondary:           240 4.8% 95.9%;
+      --secondary-foreground:240 5.9% 10%;
+      --muted:               240 4.8% 95.9%;
+      --muted-foreground:    240 3.8% 46.1%;
+      --accent:              263 30% 96%;
+      --accent-foreground:   263 70% 40%;
+      --destructive:         0 84.2% 60.2%;
       --destructive-foreground: 0 0% 98%;
-      --border:             0 0% 12%;
-      --input:              0 0% 12%;
-      --ring:               263 70% 50%;
-      --radius:             0.5rem;
+      --border:              240 5.9% 90%;
+      --input:               240 5.9% 90%;
+      --ring:                263 70% 50%;
+      --radius:              0.5rem;
 
       /* Semantic colours */
       --c-bg:       hsl(var(--background));
@@ -44,7 +44,7 @@
       --c-border:   hsl(var(--border));
       --c-fg:       hsl(var(--foreground));
       --c-muted:    hsl(var(--muted-foreground));
-      --c-primary:  hsl(var(--primary));          /* #7C3AED */
+      --c-primary:  #7C3AED;
       --c-primary-hover: #6d28d9;
       --c-accent-bg:  hsl(var(--accent));
       --c-accent-fg:  hsl(var(--accent-foreground));
@@ -121,7 +121,7 @@
       color: #fff;
       letter-spacing: -0.5px;
       flex-shrink: 0;
-      box-shadow: 0 0 0 1px rgba(124,58,237,.4);
+      box-shadow: 0 0 0 1px rgba(124,58,237,.25);
     }
 
     .brand-text { display: flex; flex-direction: column; }
@@ -156,9 +156,9 @@
     }
 
     .badge.primary {
-      border-color: var(--c-primary);
+      border-color: rgba(124,58,237,.4);
       color: var(--c-primary);
-      background: rgba(124,58,237,.08);
+      background: rgba(124,58,237,.06);
     }
 
     .sidebar-section {
@@ -247,7 +247,7 @@
     /* ── Topbar ──────────────────────────────────────────────────── */
     #topbar {
       height: 56px;
-      background: rgba(10,10,10,.8);
+      background: rgba(255,255,255,.85);
       backdrop-filter: blur(12px);
       border-bottom: 1px solid var(--c-border);
       display: flex;
@@ -257,12 +257,6 @@
       position: sticky;
       top: 0;
       z-index: 50;
-    }
-
-    .topbar-left {
-      display: flex;
-      align-items: center;
-      gap: 8px;
     }
 
     .topbar-breadcrumb {
@@ -300,7 +294,7 @@
     .btn-ghost:hover {
       background: var(--c-accent-bg);
       color: var(--c-fg);
-      border-color: var(--c-primary);
+      border-color: rgba(124,58,237,.4);
     }
 
     .btn-primary {
@@ -317,7 +311,7 @@
       border: none;
       transition: background .15s, transform .1s;
       cursor: pointer;
-      box-shadow: 0 1px 3px rgba(124,58,237,.4);
+      box-shadow: 0 1px 3px rgba(124,58,237,.3);
     }
 
     .btn-primary:hover { background: var(--c-primary-hover); color: #fff; transform: translateY(-1px); }
@@ -326,7 +320,7 @@
     .hero {
       padding: 48px 28px 40px;
       border-bottom: 1px solid var(--c-border);
-      background: linear-gradient(135deg, rgba(124,58,237,.05) 0%, transparent 60%);
+      background: linear-gradient(135deg, rgba(124,58,237,.04) 0%, rgba(255,255,255,0) 60%);
       position: relative;
       overflow: hidden;
     }
@@ -338,7 +332,7 @@
       right: -60px;
       width: 300px;
       height: 300px;
-      background: radial-gradient(circle, rgba(124,58,237,.12) 0%, transparent 70%);
+      background: radial-gradient(circle, rgba(124,58,237,.07) 0%, transparent 70%);
       pointer-events: none;
     }
 
@@ -351,7 +345,7 @@
       text-transform: uppercase;
       letter-spacing: .1em;
       color: var(--c-primary);
-      background: rgba(124,58,237,.08);
+      background: rgba(124,58,237,.06);
       border: 1px solid rgba(124,58,237,.2);
       border-radius: 9999px;
       padding: 3px 10px;
@@ -434,22 +428,27 @@
       padding: 32px 28px 80px;
     }
 
-    /* ── Auth info card ──────────────────────────────────────────── */
-    .auth-card {
+    /* ── Info cards ──────────────────────────────────────────────── */
+    .info-card {
       background: var(--c-card);
       border: 1px solid var(--c-border);
       border-radius: var(--radius);
       padding: 20px;
-      margin-bottom: 28px;
+      margin-bottom: 16px;
       display: flex;
       align-items: flex-start;
       gap: 16px;
     }
 
-    .auth-card-icon {
+    .info-card.mapbox {
+      border-left: 3px solid var(--c-primary);
+      background: rgba(124,58,237,.02);
+    }
+
+    .info-card-icon {
       width: 36px;
       height: 36px;
-      background: rgba(124,58,237,.12);
+      background: rgba(124,58,237,.1);
       border-radius: var(--radius);
       display: flex;
       align-items: center;
@@ -458,37 +457,95 @@
       flex-shrink: 0;
     }
 
-    .auth-card-body h3 {
+    .info-card-body h3 {
       font-size: 14px;
       font-weight: 600;
       color: var(--c-fg);
-      margin-bottom: 4px;
+      margin-bottom: 6px;
     }
 
-    .auth-card-body p {
+    .info-card-body p {
       font-size: 13px;
       color: var(--c-muted);
-      line-height: 1.6;
+      line-height: 1.65;
+      margin-bottom: 10px;
     }
 
-    .auth-card-body code {
+    .info-card-body p:last-child { margin-bottom: 0; }
+
+    .info-card-body code {
       font-family: 'Geist Mono', monospace;
       font-size: 12px;
-      background: rgba(124,58,237,.1);
+      background: rgba(124,58,237,.08);
       color: var(--c-primary);
       padding: 1px 6px;
       border-radius: 4px;
     }
 
-    /* ── Swagger UI overrides (shadcn dark theme) ────────────────── */
+    /* Mapbox table */
+    .mapbox-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      font-size: 12px;
+    }
+
+    .mapbox-table th {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--c-muted);
+      text-align: left;
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--c-border);
+      background: rgba(0,0,0,.02);
+    }
+
+    .mapbox-table td {
+      padding: 7px 10px;
+      border-bottom: 1px solid var(--c-border);
+      color: var(--c-fg);
+      vertical-align: top;
+    }
+
+    .mapbox-table td:first-child {
+      font-family: 'Geist Mono', monospace;
+      color: var(--c-primary);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .mapbox-table td:last-child {
+      font-family: 'Geist Mono', monospace;
+      color: #16a34a;
+      font-size: 12px;
+    }
+
+    .mapbox-table tr:last-child td { border-bottom: none; }
+
+    .fallback-note {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #d97706;
+      background: rgba(217,119,6,.06);
+      border: 1px solid rgba(217,119,6,.2);
+      border-radius: var(--radius);
+      padding: 6px 12px;
+      margin-top: 10px;
+    }
+
+    /* ── Swagger UI overrides (shadcn light theme) ───────────────── */
     .swagger-ui { font-family: 'Geist', sans-serif !important; background: transparent; }
     .swagger-ui .topbar { display: none !important; }
     .swagger-ui .info { display: none !important; }
     .swagger-ui .scheme-container {
-      background: var(--c-card) !important;
+      background: #fff !important;
       border: 1px solid var(--c-border) !important;
       border-radius: var(--radius) !important;
-      box-shadow: none !important;
+      box-shadow: 0 1px 3px rgba(0,0,0,.06) !important;
       padding: 14px 18px !important;
       margin-bottom: 28px !important;
     }
@@ -509,22 +566,24 @@
       color: var(--c-muted) !important;
       font-weight: 400 !important;
     }
+    .swagger-ui .opblock-tag:hover { background: transparent !important; }
 
     /* Operation blocks */
     .swagger-ui .opblock {
       border-radius: var(--radius) !important;
       border: 1px solid var(--c-border) !important;
-      background: var(--c-card) !important;
-      box-shadow: none !important;
+      background: #fff !important;
+      box-shadow: 0 1px 2px rgba(0,0,0,.04) !important;
       margin-bottom: 6px !important;
       overflow: hidden !important;
     }
 
-    .swagger-ui .opblock:hover { border-color: rgba(124,58,237,.3) !important; }
+    .swagger-ui .opblock:hover { border-color: rgba(124,58,237,.25) !important; }
 
     .swagger-ui .opblock .opblock-summary {
       border: none !important;
       padding: 10px 14px !important;
+      background: transparent !important;
     }
 
     .swagger-ui .opblock-summary-method {
@@ -537,6 +596,7 @@
       text-align: center !important;
       border: none !important;
       letter-spacing: .04em !important;
+      color: #fff !important;
     }
 
     .swagger-ui .opblock.opblock-get    .opblock-summary-method { background: var(--get) !important; }
@@ -550,6 +610,13 @@
     .swagger-ui .opblock.opblock-put    { border-left: 3px solid var(--put) !important; }
     .swagger-ui .opblock.opblock-patch  { border-left: 3px solid var(--patch) !important; }
     .swagger-ui .opblock.opblock-delete { border-left: 3px solid var(--delete) !important; }
+
+    /* tinted backgrounds per method */
+    .swagger-ui .opblock.opblock-get    .opblock-summary { background: rgba(37,99,235,.02) !important; }
+    .swagger-ui .opblock.opblock-post   .opblock-summary { background: rgba(22,163,74,.02) !important; }
+    .swagger-ui .opblock.opblock-put    .opblock-summary { background: rgba(217,119,6,.02) !important; }
+    .swagger-ui .opblock.opblock-patch  .opblock-summary { background: rgba(124,58,237,.02) !important; }
+    .swagger-ui .opblock.opblock-delete .opblock-summary { background: rgba(220,38,38,.02) !important; }
 
     .swagger-ui .opblock-summary-path {
       font-family: 'Geist Mono', monospace !important;
@@ -565,7 +632,7 @@
 
     /* Expanded block body */
     .swagger-ui .opblock-body {
-      background: rgba(0,0,0,.2) !important;
+      background: hsl(240 4.8% 97%) !important;
     }
 
     .swagger-ui .opblock-section-header {
@@ -576,7 +643,7 @@
 
     .swagger-ui .opblock-section-header h4 {
       font-family: 'Geist', sans-serif !important;
-      font-size: 12px !important;
+      font-size: 11px !important;
       font-weight: 600 !important;
       color: var(--c-muted) !important;
       text-transform: uppercase !important;
@@ -618,12 +685,56 @@
       color: var(--c-muted) !important;
     }
 
-    .swagger-ui .parameter__in {
-      font-family: 'Geist Mono', monospace !important;
-      font-size: 10px !important;
+    .swagger-ui .required { color: #dc2626 !important; font-weight: 600 !important; }
+
+    /* Description markdown */
+    .swagger-ui .markdown p,
+    .swagger-ui .renderedMarkdown p {
+      font-family: 'Geist', sans-serif !important;
+      font-size: 13px !important;
+      color: var(--c-muted) !important;
+      line-height: 1.65 !important;
+      margin-bottom: 8px !important;
     }
 
-    .swagger-ui .required { color: #f87171 !important; font-weight: 600 !important; }
+    .swagger-ui .markdown table,
+    .swagger-ui .renderedMarkdown table {
+      border-collapse: collapse !important;
+      width: 100% !important;
+      font-size: 12px !important;
+      margin: 10px 0 !important;
+    }
+
+    .swagger-ui .markdown table th,
+    .swagger-ui .renderedMarkdown table th {
+      background: hsl(240 4.8% 95.9%) !important;
+      color: var(--c-fg) !important;
+      font-weight: 600 !important;
+      padding: 6px 10px !important;
+      border: 1px solid var(--c-border) !important;
+      font-size: 11px !important;
+      text-transform: uppercase !important;
+      letter-spacing: .04em !important;
+    }
+
+    .swagger-ui .markdown table td,
+    .swagger-ui .renderedMarkdown table td {
+      padding: 6px 10px !important;
+      border: 1px solid var(--c-border) !important;
+      color: var(--c-fg) !important;
+      font-family: 'Geist Mono', monospace !important;
+      font-size: 12px !important;
+    }
+
+    .swagger-ui .markdown code,
+    .swagger-ui .renderedMarkdown code {
+      font-family: 'Geist Mono', monospace !important;
+      font-size: 12px !important;
+      background: rgba(124,58,237,.07) !important;
+      color: var(--c-primary) !important;
+      padding: 1px 5px !important;
+      border-radius: 3px !important;
+    }
 
     /* Code blocks */
     .swagger-ui .highlight-code pre,
@@ -631,25 +742,20 @@
     .swagger-ui pre {
       font-family: 'Geist Mono', monospace !important;
       font-size: 12px !important;
-      background: #0d0d0d !important;
+      background: hsl(240 4.8% 97%) !important;
       border: 1px solid var(--c-border) !important;
       border-radius: var(--radius) !important;
       padding: 14px !important;
       line-height: 1.6 !important;
-      color: #e2e8f0 !important;
-    }
-
-    /* Responses */
-    .swagger-ui .responses-inner h4,
-    .swagger-ui .responses-inner h5 {
-      font-family: 'Geist', sans-serif !important;
       color: var(--c-fg) !important;
     }
 
+    /* Responses */
     .swagger-ui .response-col_status {
       font-family: 'Geist Mono', monospace !important;
       font-size: 13px !important;
       font-weight: 600 !important;
+      color: var(--c-fg) !important;
     }
 
     .swagger-ui .response-col_description {
@@ -670,12 +776,10 @@
       background: var(--c-primary) !important;
       border-color: var(--c-primary) !important;
       color: #fff !important;
-      box-shadow: 0 1px 3px rgba(124,58,237,.3) !important;
+      box-shadow: 0 1px 3px rgba(124,58,237,.25) !important;
     }
 
-    .swagger-ui .btn.authorize:hover {
-      background: var(--c-primary-hover) !important;
-    }
+    .swagger-ui .btn.authorize:hover { background: var(--c-primary-hover) !important; }
 
     .swagger-ui .btn.execute {
       background: var(--c-primary) !important;
@@ -694,12 +798,10 @@
     .swagger-ui .btn.try-out__btn {
       border-color: var(--c-primary) !important;
       color: var(--c-primary) !important;
-      background: rgba(124,58,237,.06) !important;
+      background: rgba(124,58,237,.04) !important;
     }
 
-    .swagger-ui .btn.try-out__btn:hover {
-      background: rgba(124,58,237,.12) !important;
-    }
+    .swagger-ui .btn.try-out__btn:hover { background: rgba(124,58,237,.1) !important; }
 
     /* Inputs */
     .swagger-ui input[type=text],
@@ -711,7 +813,7 @@
     .swagger-ui select {
       font-family: 'Geist Mono', monospace !important;
       font-size: 13px !important;
-      background: var(--c-bg) !important;
+      background: #fff !important;
       color: var(--c-fg) !important;
       border: 1px solid var(--c-border) !important;
       border-radius: var(--radius) !important;
@@ -724,15 +826,16 @@
     .swagger-ui textarea:focus,
     .swagger-ui select:focus {
       border-color: var(--c-primary) !important;
-      box-shadow: 0 0 0 2px rgba(124,58,237,.15) !important;
+      box-shadow: 0 0 0 2px rgba(124,58,237,.1) !important;
     }
 
     /* Models section */
     .swagger-ui section.models {
-      background: var(--c-card) !important;
+      background: #fff !important;
       border: 1px solid var(--c-border) !important;
       border-radius: var(--radius) !important;
       margin-top: 28px !important;
+      box-shadow: 0 1px 3px rgba(0,0,0,.04) !important;
     }
 
     .swagger-ui section.models h4 {
@@ -742,8 +845,8 @@
       color: var(--c-fg) !important;
     }
 
-    .swagger-ui section.models .model-container {
-      background: rgba(0,0,0,.2) !important;
+    .swagger-ui .model-container {
+      background: hsl(240 4.8% 97%) !important;
       border-radius: var(--radius) !important;
       margin: 8px !important;
     }
@@ -766,16 +869,15 @@
 
     /* Auth modal */
     .swagger-ui .dialog-ux .modal-ux {
-      background: var(--c-card) !important;
+      background: #fff !important;
       border: 1px solid var(--c-border) !important;
       border-radius: calc(var(--radius) * 2) !important;
-      box-shadow: 0 20px 60px rgba(0,0,0,.6) !important;
+      box-shadow: 0 20px 60px rgba(0,0,0,.12) !important;
     }
 
     .swagger-ui .dialog-ux .modal-ux-header {
-      background: var(--c-card) !important;
+      background: #fff !important;
       border-bottom: 1px solid var(--c-border) !important;
-      border-radius: calc(var(--radius) * 2) calc(var(--radius) * 2) 0 0 !important;
     }
 
     .swagger-ui .dialog-ux .modal-ux-header h3 {
@@ -785,7 +887,7 @@
     }
 
     .swagger-ui .dialog-ux .modal-ux-content {
-      background: var(--c-card) !important;
+      background: #fff !important;
     }
 
     .swagger-ui .dialog-ux .modal-ux-content p,
@@ -808,18 +910,32 @@
     /* Filter input */
     .swagger-ui .filter-container .operation-filter-input {
       border-color: var(--c-border) !important;
-      background: var(--c-bg) !important;
+      background: #fff !important;
       color: var(--c-fg) !important;
     }
 
-    /* Arrows / chevrons */
-    .swagger-ui .arrow { filter: invert(1) !important; opacity: .5; }
+    /* Arrows / chevrons — keep dark since light bg */
+    .swagger-ui .arrow { filter: none !important; opacity: .6; }
+
+    /* Global text colour fix */
+    .swagger-ui,
+    .swagger-ui p,
+    .swagger-ui span,
+    .swagger-ui li,
+    .swagger-ui label,
+    .swagger-ui h1,
+    .swagger-ui h2,
+    .swagger-ui h3,
+    .swagger-ui h4,
+    .swagger-ui h5 {
+      color: var(--c-fg) !important;
+    }
 
     /* ── Scrollbar ──────────────────────────────────────────────── */
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--c-border); border-radius: 4px; }
-    ::-webkit-scrollbar-thumb:hover { background: rgba(124,58,237,.4); }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(124,58,237,.35); }
 
     /* ── Responsive ─────────────────────────────────────────────── */
     @media (max-width: 768px) {
@@ -894,7 +1010,6 @@
 
     <div class="sidebar-footer">
       <a href="https://github.com/AyoBDev/unilorin-carpooling" target="_blank">
-        <!-- github icon -->
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.385-1.335-1.755-1.335-1.755-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
         GitHub
       </a>
@@ -910,10 +1025,8 @@
 
     <!-- Topbar -->
     <header id="topbar">
-      <div class="topbar-left">
-        <div class="topbar-breadcrumb">
-          PSRide <span style="color:var(--c-border);">/</span> <span>API Reference</span>
-        </div>
+      <div class="topbar-breadcrumb">
+        PSRide <span style="color:var(--c-border);margin:0 2px;">/</span> <span>API Reference</span>
       </div>
       <div class="topbar-right">
         <a class="btn-ghost" href="./openapi.yaml" target="_blank">
@@ -921,7 +1034,7 @@
           Download spec
         </a>
         <a class="btn-primary" href="https://jk4sd35xw3.execute-api.eu-west-1.amazonaws.com/dev/api/v1/health" target="_blank">
-          <span style="width:7px;height:7px;border-radius:50%;background:#4ade80;display:inline-block;"></span>
+          <span style="width:7px;height:7px;border-radius:50%;background:#16a34a;display:inline-block;"></span>
           Live API
         </a>
       </div>
@@ -935,7 +1048,7 @@
       </div>
       <h1>PSRide <span>API Reference</span></h1>
       <p class="hero-desc">
-        Complete REST API for the PSRide carpooling platform — authentication, ride management with Mapbox route calculation, cash-based booking verification, web push notifications, and safety features.
+        Complete REST API for the PSRide carpooling platform — authentication, ride management with real-road Mapbox route calculation, cash-based booking verification, web push notifications, and safety features.
       </p>
       <div class="hero-actions">
         <a class="btn-primary" href="#swagger-ui-wrap">
@@ -968,18 +1081,69 @@
       </div>
     </div>
 
-    <!-- Swagger UI -->
+    <!-- Swagger UI area -->
     <div id="swagger-ui-wrap">
 
-      <!-- Auth hint card -->
-      <div class="auth-card">
-        <div class="auth-card-icon">🔑</div>
-        <div class="auth-card-body">
+      <!-- Auth card -->
+      <div class="info-card">
+        <div class="info-card-icon">🔑</div>
+        <div class="info-card-body">
           <h3>Authentication</h3>
           <p>
             Most endpoints require a Bearer JWT. Click <strong>Authorize</strong> in the Swagger UI below and paste your token.
             Get a token from <code>POST /auth/login</code> or <code>POST /auth/register</code>.
             Use <code>POST /auth/refresh-token</code> when it expires.
+          </p>
+        </div>
+      </div>
+
+      <!-- Mapbox card -->
+      <div class="info-card mapbox">
+        <div class="info-card-icon">🗺️</div>
+        <div class="info-card-body">
+          <h3>Mapbox Route Calculation — POST /rides</h3>
+          <p>
+            Every time a driver creates a ride, the server automatically calls the
+            <strong>Mapbox Directions API v5</strong> (driving profile) to calculate the real road distance
+            and estimated travel time between the start and end locations. You never need to pass route data
+            — just send the coordinates and the server fills in the rest.
+          </p>
+
+          <table class="mapbox-table">
+            <thead>
+              <tr>
+                <th>Response field</th>
+                <th>Source</th>
+                <th>Example value</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>route.distance</td>
+                <td>Mapbox — real road km (1 dp)</td>
+                <td>3.5</td>
+              </tr>
+              <tr>
+                <td>route.estimatedDuration</td>
+                <td>Mapbox — driving minutes</td>
+                <td>9</td>
+              </tr>
+              <tr>
+                <td>route.polyline</td>
+                <td>Mapbox — polyline6 encoded string</td>
+                <td>"ek_hHl{mDwBwC..."</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="fallback-note">
+            ⚠️ If Mapbox is unavailable, the server falls back to a straight-line Haversine estimate and <code>route.polyline</code> will be <code>null</code>.
+          </div>
+
+          <p style="margin-top:12px;">
+            To decode <code>route.polyline</code> on the frontend, use
+            <code>@mapbox/polyline</code> (npm) — call <code>polyline.decode(str, 6)</code>
+            to get an array of <code>[lat, lng]</code> pairs for drawing on a map.
           </p>
         </div>
       </div>
@@ -992,7 +1156,6 @@
 
 <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
 <script>
-  // Init Swagger UI
   const ui = SwaggerUIBundle({
     url: './openapi.yaml',
     dom_id: '#swagger-ui',
@@ -1008,12 +1171,10 @@
     filter: true,
     tryItOutEnabled: false,
     persistAuthorization: true,
-    tagsSorter: 'alpha',
+    syntaxHighlight: { activated: true, theme: 'agate' },
   });
 
-  // Sidebar active link tracking
   function scrollToTag(tag) {
-    // Expand the section if collapsed
     const headings = document.querySelectorAll('.opblock-tag');
     for (const h of headings) {
       if (h.textContent.trim().startsWith(tag)) {
@@ -1025,7 +1186,6 @@
     event.currentTarget.classList.add('active');
   }
 
-  // Highlight active sidebar item on scroll
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
       if (entry.isIntersecting) {
