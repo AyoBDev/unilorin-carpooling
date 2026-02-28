@@ -210,10 +210,22 @@ if [ -n "$DEPLOY_STAGE" ]; then
   log "Deploying to '$DEPLOY_STAGE'..."
   cd "$PROJECT_ROOT/infrastructure/environments/$DEPLOY_STAGE"
 
+  # Require secrets to be set in the environment — never hardcode them here.
+  if [ -z "${JWT_SECRET:-}" ]; then
+    error "JWT_SECRET env var is not set. Export it before deploying."
+    exit 1
+  fi
+  if [ -z "${MAPBOX_ACCESS_TOKEN:-}" ]; then
+    error "MAPBOX_ACCESS_TOKEN env var is not set. Export it before deploying."
+    exit 1
+  fi
+
   terraform init -backend-config="key=${DEPLOY_STAGE}/terraform.tfstate"
   terraform plan \
     -var-file="${DEPLOY_STAGE}.tfvars" \
     -var="lambda_zip_path=$DIST_DIR/lambda.zip" \
+    -var="jwt_secret=$JWT_SECRET" \
+    -var="mapbox_access_token=$MAPBOX_ACCESS_TOKEN" \
     -out=tfplan
 
   read -p "Apply? (y/N) " -n 1 -r

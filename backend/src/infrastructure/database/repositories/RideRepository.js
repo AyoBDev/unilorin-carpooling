@@ -530,6 +530,18 @@ class RideRepository {
       return handleDynamoDBError(error, 'BatchGetRides');
     }
   }
+
+  /**
+   * Find rides by driver and date — alias used by RideService._checkOverlappingRides
+   * @param {string} driverId
+   * @param {string} date - YYYY-MM-DD
+   * @returns {Promise<Array>}
+   */
+  async findByDriverAndDate(driverId, date) {
+    const result = await this.getByDriverId(driverId, { startDate: date, limit: 20 });
+    const items = result.items || result;
+    return items.filter((r) => r.departureDate === date);
+  }
 }
 
 module.exports = RideRepository;

@@ -536,6 +536,14 @@ module.exports = {
 
   // Convenience wrappers
   formatDate,
+  parseDate: parse,   // alias used by RideService
+  getDateOnly: (d) => dayjs(d).format('YYYY-MM-DD'),
+  getTimeOnly: (d) => dayjs(d).format('HH:mm'),
+  formatTime: (d) => dayjs(d).format('HH:mm'),
+  isBefore: (d1, d2) => dayjs(d1).isBefore(dayjs(d2)),
+  isAfter: (d1, d2) => dayjs(d1).isAfter(dayjs(d2)),
+  getDayOfWeek: (d) => (d ? dayjs(d) : now()).day(),
+  calculateDuration: (start, end) => dayjs(end).diff(dayjs(start), 'minutes'),
   addHours,
   addDays,
   addMinutes,

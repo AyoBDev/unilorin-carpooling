@@ -142,8 +142,8 @@ class RideService {
       // Process pickup points
       const processedPickupPoints = this._processPickupPoints(pickupPoints, departureDateTime);
 
-      // Calculate route info (simplified - would use Mapbox in production)
-      const routeInfo = this._calculateRouteInfo(startLocation, endLocation, processedPickupPoints);
+      // Calculate route info via Mapbox Directions (falls back to Haversine if token missing)
+      const routeInfo = await this._calculateRouteInfo(startLocation, endLocation, processedPickupPoints);
 
       // Create ride data
       const ride = {
@@ -153,15 +153,29 @@ class RideService {
         departureDate: getDateOnly(departureDateTime),
         departureTime: getTimeOnly(departureDateTime),
         departureDateTime: formatDate(departureDateTime),
+        route: {
+          startLocation: {
+            address: startLocation.address,
+            coordinates: startLocation.coordinates,
+            name: startLocation.name || startLocation.address,
+          },
+          endLocation: {
+            address: endLocation.address,
+            coordinates: endLocation.coordinates,
+            name: endLocation.name || endLocation.address,
+          },
+          distance: routeInfo.distance,
+          estimatedDuration: routeInfo.duration,
+          polyline: routeInfo.polyline,
+        },
+        // Keep flat copies for convenience queries
         startLocation: {
           address: startLocation.address,
           coordinates: startLocation.coordinates,
-          name: startLocation.name || startLocation.address,
         },
         endLocation: {
           address: endLocation.address,
           coordinates: endLocation.coordinates,
-          name: endLocation.name || endLocation.address,
         },
         pickupPoints: processedPickupPoints,
         totalSeats: availableSeats,
@@ -211,7 +225,7 @@ class RideService {
       }
 
       // Update driver statistics
-      await this.userRepository.incrementDriverRides(driverId);
+      await this.userRepository.incrementRideCount(driverId, 'driver', 'created');
 
       logger.info('Ride created successfully', {
         action: RIDE_EVENTS.RIDE_CREATED,
@@ -1397,16 +1411,16 @@ class RideService {
     let vehicle;
 
     if (vehicleId) {
-      vehicle = await this.vehicleRepository.findById(vehicleId);
+      vehicle = await this.vehicleRepository.findById(driverId, vehicleId);
       if (!vehicle) {
         throw new NotFoundError('Vehicle not found', ERROR_CODES.VEHICLE_NOT_FOUND);
       }
-      if (vehicle.userId !== driverId) {
+      if (vehicle.userId !== driverId && vehicle.userId !== `USER#${driverId}`) {
         throw new ForbiddenError('Vehicle does not belong to driver', ERROR_CODES.FORBIDDEN);
       }
     } else {
       // Get primary vehicle
-      const vehicles = await this.vehicleRepository.findByUserId(driverId);
+      const vehicles = await this.vehicleRepository.getUserVehicles(driverId);
       vehicle = vehicles.find((v) => v.isPrimary) || vehicles[0];
       if (!vehicle) {
         throw new BadRequestError(
@@ -1512,7 +1526,9 @@ class RideService {
    */
   _combineDateAndTime(date, time) {
     const dateStr = typeof date === 'string' ? date : getDateOnly(date);
-    return parseDate(`${dateStr}T${time}`);
+    // Use ISO format directly — parseDate uses DEFAULT_DATETIME_FORMAT which doesn't handle 'T'
+    const { dayjs } = require('../../shared/utils/dateTime');
+    return dayjs(`${dateStr}T${time}`);
   }
 
   /**
@@ -1534,29 +1550,103 @@ class RideService {
   }
 
   /**
-   * Calculate route info (simplified)
+   * Calculate route info using Mapbox Directions API.
+   * Falls back to Haversine estimate if token is missing or API fails.
    * @private
    */
-  _calculateRouteInfo(startLocation, endLocation, _pickupPoints) {
-    // In production, this would call Mapbox Directions API
-    // Simplified calculation for now
-    const distance = this._calculateDistance(startLocation.coordinates, endLocation.coordinates);
+  async _calculateRouteInfo(startLocation, endLocation, pickupPoints = []) {
+    const token = process.env.MAPBOX_ACCESS_TOKEN;
+
+    if (token) {
+      try {
+        return await this._calculateRouteInfoMapbox(startLocation, endLocation, pickupPoints, token);
+      } catch (err) {
+        logger.warn('Mapbox Directions failed, falling back to Haversine estimate', {
+          error: err.message,
+        });
+      }
+    }
+
+    return this._calculateRouteInfoFallback(startLocation, endLocation);
+  }
+
+  /**
+   * Call Mapbox Directions API and return distance, duration, polyline.
+   * Waypoints include pickup points so the route follows the actual path.
+   * @private
+   */
+  async _calculateRouteInfoMapbox(startLocation, endLocation, pickupPoints, token) {
+    const https = require('https');
+
+    // Normalise coord — schema uses latitude/longitude, internal code uses lat/lng
+    const getLat = (c) => c.lat ?? c.latitude;
+    const getLng = (c) => c.lng ?? c.longitude;
+
+    // Build coordinate string: lng,lat;lng,lat;... (Mapbox uses lng,lat order)
+    const start = `${getLng(startLocation.coordinates)},${getLat(startLocation.coordinates)}`;
+    const end = `${getLng(endLocation.coordinates)},${getLat(endLocation.coordinates)}`;
+
+    const waypoints = (pickupPoints || [])
+      .filter((p) => getLat(p.coordinates) && getLng(p.coordinates))
+      .map((p) => `${getLng(p.coordinates)},${getLat(p.coordinates)}`);
+
+    const coords = [start, ...waypoints, end].join(';');
+
+    const url =
+      `https://api.mapbox.com/directions/v5/mapbox/driving/${coords}` +
+      `?overview=full&geometries=polyline6&access_token=${token}`;
+
+    const data = await new Promise((resolve, reject) => {
+      https.get(url, (res) => {
+        let body = '';
+        res.on('data', (chunk) => { body += chunk; });
+        res.on('end', () => {
+          try { resolve(JSON.parse(body)); }
+          catch (e) { reject(new Error('Invalid JSON from Mapbox')); }
+        });
+      }).on('error', reject);
+    });
+
+    if (!data.routes || data.routes.length === 0) {
+      throw new Error(data.message || 'No route returned from Mapbox');
+    }
+
+    const route = data.routes[0];
 
     return {
-      polyline: null, // Would be encoded polyline from Mapbox
-      distance: Math.round(distance * 10) / 10, // km
-      duration: Math.round(distance * 3), // Rough estimate: 3 min per km
+      polyline: route.geometry,                              // polyline6 encoded string
+      distance: Math.round((route.distance / 1000) * 10) / 10, // metres → km, 1dp
+      duration: Math.round(route.duration / 60),            // seconds → minutes
     };
   }
 
   /**
-   * Calculate distance between two points (Haversine formula)
+   * Haversine fallback — used when MAPBOX_ACCESS_TOKEN is not set or API fails.
+   * @private
+   */
+  _calculateRouteInfoFallback(startLocation, endLocation) {
+    const distance = this._calculateDistance(
+      startLocation.coordinates,
+      endLocation.coordinates,
+    );
+
+    return {
+      polyline: null,
+      distance: Math.round(distance * 10) / 10,
+      duration: Math.round(distance * 3), // rough: 3 min/km
+    };
+  }
+
+  /**
+   * Haversine distance between two { lat, lng } coordinate objects (km)
    * @private
    */
   _calculateDistance(coord1, coord2) {
-    const R = 6371; // Earth's radius in km
-    const [lat1, lon1] = coord1;
-    const [lat2, lon2] = coord2;
+    const R = 6371;
+    const lat1 = coord1.lat ?? coord1.latitude ?? coord1[0];
+    const lon1 = coord1.lng ?? coord1.longitude ?? coord1[1];
+    const lat2 = coord2.lat ?? coord2.latitude ?? coord2[0];
+    const lon2 = coord2.lng ?? coord2.longitude ?? coord2[1];
 
     const dLat = this._toRad(lat2 - lat1);
     const dLon = this._toRad(lon2 - lon1);

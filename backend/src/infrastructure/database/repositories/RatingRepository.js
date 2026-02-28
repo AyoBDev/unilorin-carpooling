@@ -6,7 +6,7 @@
  */
 
 const { nanoid } = require('nanoid');
-const logger = require('../../../shared/utils/logger');
+const { logger } = require('../../../shared/utils/logger');
 const BaseRepository = require('./BaseRepository');
 
 class RatingRepository extends BaseRepository {

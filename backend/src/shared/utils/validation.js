@@ -595,6 +595,49 @@ const helpers = {
 const validateRegistration = (data) => helpers.validate(data, auth.register);
 const validateLogin = (data) => helpers.validate(data, auth.login);
 
+/**
+ * Convenience validators for RideService
+ */
+const validateRide = (data) => helpers.validate(data, ride.create);
+const validatePickupPoint = (data) => helpers.validate(data, ride.addPickupPoint);
+
+/**
+ * Convenience validators for UserService
+ */
+const validateUserProfile = (data) => helpers.validate(data, user.updateProfile);
+const validateVehicle = (data) => helpers.validate(data, vehicle.create);
+const validateEmergencyContact = (data) => helpers.validate(data, user.updateEmergencyContact);
+
+/**
+ * Convenience validators for BookingService
+ */
+const validateBooking = (data) => helpers.validate(data, booking.create);
+
+// Schema aliases used by route-level validateBody/validateQuery middleware
+// Auth routes
+const resetPasswordSchema = auth.resetPassword;
+const changePasswordSchema = auth.changePassword;
+const refreshTokenSchema = auth.refreshToken;
+const otpSchema = auth.verifyEmail;   // OTP/token verification reuses verifyEmail shape
+const phoneSchema = joi.object({ phone: customValidators.nigerianPhone.required() });
+
+// User routes
+const userProfileUpdateSchema = user.updateProfile;
+const emergencyContactSchema = user.updateEmergencyContact;
+const driverRegistrationSchema = user.becomeDriver;
+const vehicleSchema = vehicle.create;
+
+// Ride routes
+const rideCreationSchema = ride.create;
+const rideSearchSchema = ride.search;
+const pickupPointSchema = ride.addPickupPoint;
+
+// Booking routes
+const bookingCreationSchema = booking.create;
+
+// Rating routes
+const ratingSchema = rating.create;
+
 module.exports = {
   joi,
   patterns,
@@ -613,5 +656,30 @@ module.exports = {
   },
   validateRegistration,
   validateLogin,
+  validateRide,
+  validatePickupPoint,
+  validateUserProfile,
+  validateVehicle,
+  validateEmergencyContact,
+  validateBooking,
+  // Auth schemas
+  resetPasswordSchema,
+  changePasswordSchema,
+  refreshTokenSchema,
+  otpSchema,
+  phoneSchema,
+  // User schemas
+  userProfileUpdateSchema,
+  emergencyContactSchema,
+  driverRegistrationSchema,
+  vehicleSchema,
+  // Ride schemas
+  rideCreationSchema,
+  rideSearchSchema,
+  pickupPointSchema,
+  // Booking schemas
+  bookingCreationSchema,
+  // Rating schemas
+  ratingSchema,
   ...helpers,
 };

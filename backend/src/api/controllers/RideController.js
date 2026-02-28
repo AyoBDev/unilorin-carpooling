@@ -52,11 +52,11 @@ class RideController {
     try {
       const driverId = req.user.userId;
 
-      const ride = await this.rideService.createRide(driverId, req.body);
+      const result = await this.rideService.createRide(driverId, req.body);
 
-      logger.info('Ride created', { driverId, rideId: ride.rideId });
+      logger.info('Ride created', { driverId, rideId: result.ride?.rideId });
 
-      return created(res, 'Ride offer created successfully', { ride });
+      return created(res, 'Ride offer created successfully', { ride: result.ride, recurringRides: result.recurringRides });
     } catch (error) {
       return next(error);
     }

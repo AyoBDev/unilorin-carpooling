@@ -87,7 +87,7 @@ class UserService {
 
       // Include additional data based on options
       if (options.includeVehicles && user.isDriver) {
-        profile.vehicles = await this.vehicleRepository.findByUserId(userId);
+        profile.vehicles = await this.vehicleRepository.getUserVehicles(userId);
       }
 
       if (options.includeStatistics) {
@@ -402,9 +402,8 @@ class UserService {
 
       // Create vehicle
       const vehicleId = randomUUID();
-      const vehicle = await this.vehicleRepository.create({
+      const vehicle = await this.vehicleRepository.create(userId, {
         vehicleId,
-        userId,
         ...validatedVehicle,
         isActive: true,
         isPrimary: true,
@@ -478,7 +477,7 @@ class UserService {
 
       // Get documents status
       const documents = await this.userRepository.getDriverDocuments(userId);
-      const vehicles = await this.vehicleRepository.findByUserId(userId);
+      const vehicles = await this.vehicleRepository.getUserVehicles(userId);
 
       return {
         isDriver: true,
@@ -952,7 +951,7 @@ class UserService {
       }
 
       // Check max vehicles (3)
-      const existingVehicles = await this.vehicleRepository.findByUserId(userId);
+      const existingVehicles = await this.vehicleRepository.getUserVehicles(userId);
       if (existingVehicles.length >= 3) {
         throw new BadRequestError(
           'Maximum of 3 vehicles allowed',
@@ -976,9 +975,8 @@ class UserService {
       }
 
       const vehicleId = randomUUID();
-      const vehicle = await this.vehicleRepository.create({
+      const vehicle = await this.vehicleRepository.create(userId, {
         vehicleId,
-        userId,
         ...value,
         isActive: true,
         isPrimary: existingVehicles.length === 0,
@@ -1095,7 +1093,7 @@ class UserService {
 
       // If it was the primary vehicle, set another as primary
       if (vehicle.isPrimary) {
-        const remainingVehicles = await this.vehicleRepository.findByUserId(userId);
+        const remainingVehicles = await this.vehicleRepository.getUserVehicles(userId);
         if (remainingVehicles.length > 0) {
           await this.vehicleRepository.setPrimary(userId, remainingVehicles[0].vehicleId);
         }
@@ -1122,7 +1120,7 @@ class UserService {
    */
   async getVehicles(userId) {
     try {
-      const vehicles = await this.vehicleRepository.findByUserId(userId);
+      const vehicles = await this.vehicleRepository.getUserVehicles(userId);
       return vehicles.sort((a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0));
     } catch (error) {
       logger.error('Failed to get vehicles', {
@@ -1597,7 +1595,7 @@ class UserService {
    */
   async _getPublicVehicleInfo(userId) {
     try {
-      const vehicles = await this.vehicleRepository.findByUserId(userId);
+      const vehicles = await this.vehicleRepository.getUserVehicles(userId);
       const primaryVehicle = vehicles.find((v) => v.isPrimary) || vehicles[0];
 
       if (!primaryVehicle) return null;
@@ -1620,7 +1618,7 @@ class UserService {
    */
   async _checkDriverVerificationComplete(userId) {
     const documents = await this.userRepository.getDriverDocuments(userId);
-    const vehicles = await this.vehicleRepository.findByUserId(userId);
+    const vehicles = await this.vehicleRepository.getUserVehicles(userId);
 
     // Required document types
     const requiredDocs = ['license', 'vehicle_registration', 'insurance'];

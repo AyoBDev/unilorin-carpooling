@@ -17,7 +17,7 @@ const {
   TransactWriteCommand,
 } = require('@aws-sdk/lib-dynamodb');
 
-const logger = require('../../../shared/utils/logger');
+const { logger } = require('../../../shared/utils/logger');
 const { AppError } = require('../../../shared/errors/AppError');
 const { docClient: getDocClientInstance, getTableName } = require('../config/dynamodb.config');
 
