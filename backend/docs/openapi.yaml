@@ -84,7 +84,7 @@ paths:
               lastName: Doe
               phone: "08012345678"
               role: student
-              matricNumber: "19/55EC/001"
+              matricNumber: "21/52HP029"
               department: Electrical Engineering
               faculty: Engineering
       responses:
@@ -2061,6 +2061,102 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /notifications/push/vapid-key:
+    get:
+      tags: [Notifications]
+      summary: Get VAPID public key
+      description: |
+        Returns the VAPID public key required by the browser before subscribing to Web Push.
+        Call this once on app load and pass the key to `pushManager.subscribe()`.
+      operationId: getVapidKey
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: VAPID public key
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          vapidPublicKey:
+                            type: string
+                            description: URL-safe base64 VAPID public key
+                            example: "BOxVL3WsFxP2IMqA722G6zTyQ_QqFKBdPpD5FlqOIpKw..."
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /notifications/push/subscribe:
+    post:
+      tags: [Notifications]
+      summary: Register a Web Push subscription (PWA)
+      description: |
+        Saves a browser Web Push subscription for the authenticated user.
+        The frontend obtains the subscription object from `pushManager.subscribe()` and sends it here.
+        Multiple subscriptions (different devices/browsers) are supported per user.
+      operationId: subscribePush
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PushSubscriptionRequest'
+            example:
+              endpoint: "https://fcm.googleapis.com/fcm/send/abc123..."
+              keys:
+                p256dh: "BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlzo..."
+                auth: "tBHItJI5svbpez7KI4CCXg"
+      responses:
+        '200':
+          description: Subscription registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /notifications/push/unsubscribe:
+    post:
+      tags: [Notifications]
+      summary: Remove a Web Push subscription
+      description: |
+        Removes a browser push subscription. Call this when the user disables notifications
+        or when `pushManager.getSubscription()` returns null (subscription was revoked by browser).
+      operationId: unsubscribePush
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [endpoint]
+              properties:
+                endpoint:
+                  type: string
+                  description: The push subscription endpoint URL to remove
+                  example: "https://fcm.googleapis.com/fcm/send/abc123..."
+      responses:
+        '200':
+          description: Subscription removed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   # ──────────────────────────────────────────────
   # SAFETY ENDPOINTS
   # ──────────────────────────────────────────────
@@ -2966,7 +3062,7 @@ components:
           enum: [student, staff, admin]
         matricNumber:
           type: string
-          example: "19/55EC/001"
+          example: "21/52HP029"
           nullable: true
         staffId:
           type: string
@@ -3306,8 +3402,8 @@ components:
           enum: [student, staff]
         matricNumber:
           type: string
-          pattern: '^\d{2}/\d{2}[A-Z]{2}/\d{3}$'
-          description: Required for students (e.g., 19/55EC/001)
+          pattern: '^\d{2}/\d{2}[A-Z]{2,4}\d{3}$'
+          description: Required for students (e.g., 21/52HP029)
         staffId:
           type: string
           pattern: '^[A-Z]{2,4}/\d{4}/\d{3,4}$'
@@ -3647,21 +3743,56 @@ components:
             type: string
             enum: [punctual, friendly, clean_car, safe_driver, good_music]
 
+    PushSubscriptionRequest:
+      type: object
+      required: [endpoint, keys]
+      description: Web Push subscription object obtained from the browser's `pushManager.subscribe()`
+      properties:
+        endpoint:
+          type: string
+          description: Push service endpoint URL (provided by the browser)
+          example: "https://fcm.googleapis.com/fcm/send/abc123..."
+        keys:
+          type: object
+          required: [p256dh, auth]
+          properties:
+            p256dh:
+              type: string
+              description: Public key for payload encryption (base64url)
+              example: "BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlzo..."
+            auth:
+              type: string
+              description: Auth secret (base64url)
+              example: "tBHItJI5svbpez7KI4CCXg"
+
     NotificationPreferences:
       type: object
+      description: Per-channel, per-category notification preferences
       properties:
         email:
-          type: boolean
+          type: object
+          properties:
+            booking: { type: boolean, default: true }
+            ride: { type: boolean, default: true }
+            payment: { type: boolean, default: true }
+            rating: { type: boolean, default: true }
+            account: { type: boolean, default: true }
+            promotional: { type: boolean, default: false }
         push:
-          type: boolean
+          type: object
+          properties:
+            booking: { type: boolean, default: true }
+            ride: { type: boolean, default: true }
+            payment: { type: boolean, default: true }
+            rating: { type: boolean, default: true }
+            account: { type: boolean, default: true }
+            promotional: { type: boolean, default: false }
         sms:
-          type: boolean
-        rideReminders:
-          type: boolean
-        bookingUpdates:
-          type: boolean
-        promotions:
-          type: boolean
+          type: object
+          properties:
+            booking: { type: boolean, default: true }
+            ride: { type: boolean, default: true }
+            safety: { type: boolean, default: true }
 
     # ── Error Code Reference ───────────────────
     ErrorCode:
