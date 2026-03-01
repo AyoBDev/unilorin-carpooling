@@ -1,6 +1,6 @@
 # ─────────────────────────────────────────────────────────
 # Variables
-# Path: infrastructure/environments/dev/variables.tf
+# Path: infrastructure/environments/staging/variables.tf
 # ─────────────────────────────────────────────────────────
 
 variable "environment" {

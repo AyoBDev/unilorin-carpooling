@@ -2,7 +2,7 @@
 # Lambda + API Gateway + SQS Wiring
 # University of Ilorin Carpooling Platform
 #
-# Path: infrastructure/environments/dev/lambda.tf
+# Path: infrastructure/environments/staging/lambda.tf
 #
 # This file wires the compute, API, and messaging modules
 # together. Copy to staging/ and production/ with appropriate

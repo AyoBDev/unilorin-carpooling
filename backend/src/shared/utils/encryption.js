@@ -11,7 +11,13 @@ const crypto = require('crypto');
 
 // Configuration
 const BCRYPT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS, 10) || 10;
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'default-encryption-key-32-chars!'; // Must be 32 bytes for AES-256
+
+const _encKeyRaw = process.env.ENCRYPTION_KEY;
+if (!_encKeyRaw && process.env.NODE_ENV === 'production') {
+  throw new Error('ENCRYPTION_KEY env var must be set in production');
+}
+const ENCRYPTION_KEY = _encKeyRaw || 'default-encryption-key-32-chars!'; // Must be 32 bytes for AES-256
+
 const IV_LENGTH = 16; // For AES, this is always 16
 
 /**
@@ -442,7 +448,11 @@ const timingSafeCompare = (a, b) => {
 // ── JWT Support ─────────────────────────────────────────
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
+const _jwtSecretRaw = process.env.JWT_SECRET;
+if (!_jwtSecretRaw && process.env.NODE_ENV === 'production') {
+  throw new Error('JWT_SECRET env var must be set in production');
+}
+const JWT_SECRET = _jwtSecretRaw || 'dev-secret-change-in-production';
 
 /**
  * Convenience wrappers used by AuthService and auth middleware

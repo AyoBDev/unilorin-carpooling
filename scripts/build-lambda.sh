@@ -219,6 +219,18 @@ if [ -n "$DEPLOY_STAGE" ]; then
     error "MAPBOX_ACCESS_TOKEN env var is not set. Export it before deploying."
     exit 1
   fi
+  if [ -z "${ENCRYPTION_KEY:-}" ]; then
+    error "ENCRYPTION_KEY env var is not set. Generate one with: openssl rand -hex 16"
+    exit 1
+  fi
+  if [ -z "${VAPID_PUBLIC_KEY:-}" ]; then
+    error "VAPID_PUBLIC_KEY env var is not set. Generate keys with: npx web-push generate-vapid-keys"
+    exit 1
+  fi
+  if [ -z "${VAPID_PRIVATE_KEY:-}" ]; then
+    error "VAPID_PRIVATE_KEY env var is not set. Generate keys with: npx web-push generate-vapid-keys"
+    exit 1
+  fi
 
   terraform init -backend-config="key=${DEPLOY_STAGE}/terraform.tfstate"
   terraform plan \
@@ -226,6 +238,9 @@ if [ -n "$DEPLOY_STAGE" ]; then
     -var="lambda_zip_path=$DIST_DIR/lambda.zip" \
     -var="jwt_secret=$JWT_SECRET" \
     -var="mapbox_access_token=$MAPBOX_ACCESS_TOKEN" \
+    -var="encryption_key=$ENCRYPTION_KEY" \
+    -var="vapid_public_key=$VAPID_PUBLIC_KEY" \
+    -var="vapid_private_key=$VAPID_PRIVATE_KEY" \
     -out=tfplan
 
   read -p "Apply? (y/N) " -n 1 -r

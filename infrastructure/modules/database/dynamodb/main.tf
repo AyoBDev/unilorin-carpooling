@@ -2,6 +2,18 @@ variable "name_prefix" { type = string }
 variable "billing_mode" { type = string }
 variable "tags" { type = map(string) }
 
+variable "enable_pitr" {
+  description = "Enable DynamoDB point-in-time recovery (disable in dev to save cost)"
+  type        = bool
+  default     = false
+}
+
+variable "enable_encryption" {
+  description = "Enable DynamoDB server-side encryption with AWS-managed KMS key"
+  type        = bool
+  default     = true
+}
+
 resource "aws_dynamodb_table" "main" {
   name         = "${var.name_prefix}-main"
   billing_mode = var.billing_mode
@@ -88,6 +100,16 @@ resource "aws_dynamodb_table" "main" {
 
   stream_enabled   = true
   stream_view_type = "NEW_AND_OLD_IMAGES"
+
+  point_in_time_recovery {
+    enabled = var.enable_pitr
+  }
+
+  server_side_encryption {
+    enabled = var.enable_encryption
+    # Uses AWS-managed DynamoDB key by default (no extra cost vs unencrypted)
+    # To use a customer-managed KMS key, set kms_key_arn here
+  }
 
   tags = var.tags
 }

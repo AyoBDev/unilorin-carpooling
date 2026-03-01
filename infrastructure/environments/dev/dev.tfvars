@@ -29,8 +29,15 @@ log_retention_days = 7   # Short retention in dev
 # ── Notifications ────────────────────────────────────────
 ses_sender_email = "noreply@carpool.unilorin.edu.ng"
 
+# ── Secrets (pass via env vars or -var flag, never commit real values) ───
+# export ENCRYPTION_KEY=$(openssl rand -hex 16)   # 32 hex chars = 32 bytes
+# export VAPID_PUBLIC_KEY=<from: npx web-push generate-vapid-keys>
+# export VAPID_PRIVATE_KEY=<from: npx web-push generate-vapid-keys>
+vapid_mailto = "mailto:admin@psride.ng"
+
 # ── DynamoDB ─────────────────────────────────────────────
 dynamodb_billing_mode = "PAY_PER_REQUEST"
+dynamodb_enable_pitr  = false   # Enable in staging/production
 
 # ── Networking (disabled in dev) ─────────────────────────
 enable_nat_gateway = false

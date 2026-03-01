@@ -1,6 +1,6 @@
 # ─────────────────────────────────────────────────────────
 # Main Configuration
-# Path: infrastructure/environments/dev/main.tf
+# Path: infrastructure/environments/staging/main.tf
 # ─────────────────────────────────────────────────────────
 
 terraform {
