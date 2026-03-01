@@ -1,29 +1,32 @@
 # PSRide API — Technical Documentation
 
-**Version:** 1.1.0
+**Version:** 1.2.0
 **Base URL (Dev):** `https://jk4sd35xw3.execute-api.eu-west-1.amazonaws.com/dev/api/v1`
 **Base URL (Local):** `http://localhost:3000/api/v1`
+**Last Updated:** March 1, 2026
 
 ---
 
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [Authentication](#authentication)
-3. [Request & Response Format](#request--response-format)
-4. [Error Handling](#error-handling)
-5. [Rate Limiting](#rate-limiting)
-6. [Data Types & Validation Rules](#data-types--validation-rules)
-7. [Auth Endpoints](#auth-endpoints)
-8. [User Endpoints](#user-endpoints)
-9. [Ride Endpoints](#ride-endpoints)
-10. [Booking Endpoints](#booking-endpoints)
-11. [Rating Endpoints](#rating-endpoints)
-12. [Notification Endpoints](#notification-endpoints)
-13. [Safety Endpoints](#safety-endpoints)
-14. [Report Endpoints](#report-endpoints)
-15. [Admin Endpoints](#admin-endpoints)
-16. [Common Workflows](#common-workflows)
+2. [Environments](#environments)
+3. [Authentication](#authentication)
+4. [Request & Response Format](#request--response-format)
+5. [Error Handling](#error-handling)
+6. [Rate Limiting](#rate-limiting)
+7. [Data Types & Validation Rules](#data-types--validation-rules)
+8. [Auth Endpoints](#auth-endpoints)
+9. [User Endpoints](#user-endpoints)
+10. [Ride Endpoints](#ride-endpoints)
+11. [Booking Endpoints](#booking-endpoints)
+12. [Rating Endpoints](#rating-endpoints)
+13. [Notification Endpoints](#notification-endpoints)
+14. [Safety Endpoints](#safety-endpoints)
+15. [Report Endpoints](#report-endpoints)
+16. [Admin Endpoints](#admin-endpoints)
+17. [Common Workflows](#common-workflows)
+18. [Changelog](#changelog)
 
 ---
 
@@ -36,6 +39,19 @@ Key concepts:
 - A **Passenger** is any authenticated user who books a seat on a ride.
 - Every ride creation automatically calls the **Mapbox Directions API** to calculate road distance and travel time.
 - Booking payment is confirmed in-person with a 6-digit code the passenger shows the driver.
+
+---
+
+## Environments
+
+| Environment | Base URL | Notes |
+|-------------|----------|-------|
+| **Dev** | `https://jk4sd35xw3.execute-api.eu-west-1.amazonaws.com/dev/api/v1` | Live, for integration testing |
+| **Staging** | *(to be deployed)* | Mirrors production config — use before go-live |
+| **Production** | *(to be deployed)* | Real users |
+| **Local** | `http://localhost:3000/api/v1` | Run `npm run dev` in `backend/` |
+
+All environments share the same API contract. The only differences are the base URL and server-side resource sizing.
 
 ---
 
@@ -1948,6 +1964,8 @@ Passenger                          Driver
 
 ### 5. Web Push Notification Setup (PWA)
 
+> **Note:** Web Push requires VAPID keys to be configured on the server (`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_MAILTO` env vars). `GET /notifications/push/vapid-key` will return `null` if they are not set.
+
 ```javascript
 // 1. Get VAPID public key
 const { data: { publicKey } } = await fetch('/notifications/push/vapid-key', {
@@ -1999,5 +2017,27 @@ const geojson = {
   }
 };
 ```
+
+---
+
+## Changelog
+
+### v1.2.0 — March 1, 2026
+- Added [Environments](#environments) section with dev / staging / production URLs
+- Added VAPID keys note to Web Push setup workflow
+- Added this Changelog section
+- Updated version to reflect production hardening work (staging + production Terraform environments, DynamoDB PITR, ENCRYPTION_KEY and VAPID env vars wired into Lambda)
+
+### v1.1.0 — February 28, 2026
+- **Mapbox integration:** `POST /rides` now auto-calculates `route.distance`, `route.estimatedDuration`, and `route.polyline` via Mapbox Directions API v5 (driving profile). Falls back to Haversine if Mapbox is unavailable — `route.polyline` will be `null` in that case.
+- Added `RouteInfo` schema documentation with all three fields
+- Added `route.polyline` decode workflow (section 6)
+- Added `vehicleId` field to `POST /rides` request body
+- Updated `Ride` response object to include nested `route`, `driver`, and `vehicle` objects
+- Added `GET /notifications/push/vapid-key` and `POST /notifications/push/subscribe` / `unsubscribe` endpoints
+- Expanded error code reference
+
+### v1.0.0 — February 27, 2026
+- Initial release covering all 104 endpoints across 9 resource groups
 
 If `route.polyline` is `null`, Mapbox was unavailable and you should draw a straight line between `route.startLocation.coordinates` and `route.endLocation.coordinates` as a fallback.
