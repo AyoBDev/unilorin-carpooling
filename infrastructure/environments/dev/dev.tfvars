@@ -17,7 +17,7 @@ enable_vpc               = false     # No ElastiCache in dev
 enable_schedules         = false     # Disable cron in dev
 
 # ── API Gateway ──────────────────────────────────────────
-cors_origin     = "http://localhost:3000,http://localhost:3001"
+cors_origin     = "*"
 app_url         = "http://localhost:3000"
 api_burst_limit = 500
 api_rate_limit  = 100

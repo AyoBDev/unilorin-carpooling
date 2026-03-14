@@ -111,8 +111,7 @@ const buildErrorResponse = (error, correlationId) => {
     headers: {
       'Content-Type': 'application/json',
       'X-Correlation-Id': correlationId,
-      'Access-Control-Allow-Origin': process.env.CORS_ORIGINS || '*',
-      'Access-Control-Allow-Credentials': 'true',
+      'Access-Control-Allow-Origin': '*',
     },
     body: JSON.stringify({
       success: false,

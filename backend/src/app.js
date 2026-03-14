@@ -55,9 +55,7 @@ app.use(
 // ─── CORS ──────────────────────────────────────────────────────
 app.use(
   cors({
-    origin: process.env.CORS_ORIGINS
-      ? process.env.CORS_ORIGINS.split(',')
-      : ['http://localhost:3000', 'http://localhost:3001'],
+    origin: '*',
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'x-correlation-id'],
     exposedHeaders: [
@@ -66,7 +64,6 @@ app.use(
       'X-RateLimit-Remaining',
       'X-RateLimit-Reset',
     ],
-    credentials: true,
     maxAge: 86400, // 24 hours
   }),
 );
