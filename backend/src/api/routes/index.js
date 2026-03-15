@@ -20,6 +20,7 @@ const notificationRoutes = require('./notification.routes');
 const safetyRoutes = require('./safety.routes');
 const reportRoutes = require('./report.routes');
 const adminRoutes = require('./admin.routes');
+const uploadRoutes = require('./upload.routes');
 
 const router = Router();
 
@@ -46,5 +47,6 @@ router.use('/notifications', notificationRoutes);
 router.use('/safety', safetyRoutes);
 router.use('/reports', reportRoutes);
 router.use('/admin', adminRoutes);
+router.use('/uploads', uploadRoutes);
 
 module.exports = router;

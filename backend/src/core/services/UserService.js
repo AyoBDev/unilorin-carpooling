@@ -27,6 +27,9 @@ const {
 } = require('../../shared/errors');
 const { ERROR_CODES, ERROR_MESSAGES } = require('../../shared/constants/errors');
 const { USER_EVENTS } = require('../../shared/constants/events');
+const { GetObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
+const { s3Client, getBucketName } = require('../../infrastructure/storage/s3Client');
 
 /**
  * Document verification status
@@ -85,6 +88,9 @@ class UserService {
       // Build profile response
       const profile = this._buildProfileResponse(user);
 
+      // Generate signed URL for profile photo
+      profile.profilePhotoUrl = await this._getSignedPhotoUrl(profile.profilePhoto);
+
       // Include additional data based on options
       if (options.includeVehicles && user.isDriver) {
         profile.vehicles = await this.vehicleRepository.getUserVehicles(userId);
@@ -132,7 +138,8 @@ class UserService {
       }
 
       // Return limited public information
-      return {
+      const profilePhoto = user.profilePhoto || 'defaults/default-avatar.svg';
+      const publicProfile = {
         userId: user.userId,
         firstName: user.firstName,
         lastName: `${user.lastName.charAt(0)}.`, // Privacy: only show initial
@@ -144,12 +151,14 @@ class UserService {
         totalRatings: user.totalRatings || 0,
         totalRides: user.totalRidesCompleted || 0,
         memberSince: user.createdAt,
-        profilePhoto: user.profilePhoto,
+        profilePhoto,
+        profilePhotoUrl: await this._getSignedPhotoUrl(profilePhoto),
         // Driver-specific public info
         ...(user.isDriver && {
           vehicleInfo: await this._getPublicVehicleInfo(userId),
         }),
       };
+      return publicProfile;
     } catch (error) {
       logger.error('Failed to fetch public profile', {
         action: 'PUBLIC_PROFILE_FETCH_FAILED',
@@ -1546,6 +1555,22 @@ class UserService {
   // ==================== Private Methods ====================
 
   /**
+   * Generate a presigned URL for an S3 key
+   * @private
+   */
+  async _getSignedPhotoUrl(key) {
+    if (!key) return null;
+    try {
+      const bucket = getBucketName();
+      if (!bucket) return null;
+      const command = new GetObjectCommand({ Bucket: bucket, Key: key });
+      return await getSignedUrl(s3Client, command, { expiresIn: 3600 });
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Build profile response
    * @private
    */
@@ -1561,7 +1586,7 @@ class UserService {
       isVerified: user.isVerified,
       isDriver: user.isDriver,
       isActive: user.isActive,
-      profilePhoto: user.profilePhoto,
+      profilePhoto: user.profilePhoto || 'defaults/default-avatar.svg',
       averageRating: user.averageRating || 0,
       totalRatings: user.totalRatings || 0,
       // Role-specific fields

@@ -638,6 +638,21 @@ const bookingCreationSchema = booking.create;
 // Rating routes
 const ratingSchema = rating.create;
 
+// Upload routes
+const presignUploadSchema = joi.object({
+  category: joi.string().valid('profile-photo', 'driver-document', 'vehicle-photo').required(),
+  entityId: joi.string().max(100).optional(),
+  contentType: joi.string().valid('image/jpeg', 'image/png', 'image/webp', 'image/heic').required(),
+});
+
+const confirmUploadSchema = joi.object({
+  key: joi.string().max(500).required(),
+});
+
+const viewUploadSchema = joi.object({
+  key: joi.string().max(500).required(),
+});
+
 module.exports = {
   joi,
   patterns,
@@ -681,5 +696,9 @@ module.exports = {
   bookingCreationSchema,
   // Rating schemas
   ratingSchema,
+  // Upload schemas
+  presignUploadSchema,
+  confirmUploadSchema,
+  viewUploadSchema,
   ...helpers,
 };

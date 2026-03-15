@@ -1,9 +1,9 @@
 # PSRide API — Technical Documentation
 
-**Version:** 1.2.0
+**Version:** 1.3.0
 **Base URL (Dev):** `https://jk4sd35xw3.execute-api.eu-west-1.amazonaws.com/dev/api/v1`
 **Base URL (Local):** `http://localhost:3000/api/v1`
-**Last Updated:** March 1, 2026
+**Last Updated:** March 16, 2026
 
 ---
 
@@ -24,9 +24,10 @@
 13. [Notification Endpoints](#notification-endpoints)
 14. [Safety Endpoints](#safety-endpoints)
 15. [Report Endpoints](#report-endpoints)
-16. [Admin Endpoints](#admin-endpoints)
-17. [Common Workflows](#common-workflows)
-18. [Changelog](#changelog)
+16. [Upload Endpoints](#upload-endpoints)
+17. [Admin Endpoints](#admin-endpoints)
+18. [Common Workflows](#common-workflows)
+19. [Changelog](#changelog)
 
 ---
 
@@ -1782,6 +1783,175 @@ Get overall driver performance summary.
 
 ---
 
+## Upload Endpoints
+
+Image uploads use **S3 presigned URLs** — files go directly from the browser to S3, bypassing Lambda's 6 MB payload limit.
+
+### Upload Flow
+
+```
+1. POST /uploads/presign   → get presigned PUT URL + S3 key
+2. PUT  {uploadUrl}        → upload file directly to S3 (from browser)
+3. POST /uploads/confirm   → verify upload, get image metadata
+```
+
+### Categories & Limits
+
+| Category | Max Size | S3 Path |
+|----------|----------|---------|
+| `profile-photo` | 5 MB | `uploads/profile-photos/{userId}/{fileId}.{ext}` |
+| `driver-document` | 10 MB | `uploads/driver-documents/{userId}/{fileId}.{ext}` |
+| `vehicle-photo` | 10 MB | `uploads/vehicle-photos/{userId}/{entityId}/{fileId}.{ext}` |
+
+Allowed content types: `image/jpeg`, `image/png`, `image/webp`, `image/heic`
+
+### Endpoints
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/uploads/presign` | Bearer | Request a presigned S3 upload URL |
+| `POST` | `/uploads/confirm` | Bearer | Confirm upload exists in S3 |
+| `POST` | `/uploads/view` | Bearer | Get a signed view URL (1 hr expiry) |
+| `DELETE` | `/uploads` | Bearer | Delete an upload from S3 |
+
+### `POST /uploads/presign`
+
+Request a presigned PUT URL for uploading an image.
+
+**Request Body:**
+
+```json
+{
+  "category": "profile-photo",
+  "contentType": "image/jpeg",
+  "entityId": "optional-vehicle-id"
+}
+```
+
+**Response (201):**
+
+```json
+{
+  "success": true,
+  "message": "Upload URL generated",
+  "data": {
+    "uploadUrl": "https://carpool-dev-uploads.s3.eu-west-1.amazonaws.com/uploads/profile-photos/USER123/abc.jpg?X-Amz-...",
+    "key": "uploads/profile-photos/USER123/abc.jpg",
+    "expiresAt": "2026-03-16T12:15:00.000Z",
+    "maxSize": 5242880,
+    "contentType": "image/jpeg"
+  }
+}
+```
+
+**Frontend upload example:**
+
+```javascript
+// 1. Get presigned URL
+const { data } = await api.post('/uploads/presign', {
+  category: 'profile-photo',
+  contentType: file.type,
+});
+
+// 2. Upload directly to S3
+await fetch(data.uploadUrl, {
+  method: 'PUT',
+  headers: { 'Content-Type': file.type },
+  body: file,
+});
+
+// 3. Confirm
+const { data: confirmed } = await api.post('/uploads/confirm', {
+  key: data.key,
+});
+// confirmed.imageUrl → full S3 URL
+```
+
+### `POST /uploads/confirm`
+
+Verify an upload exists in S3 after uploading via presigned URL.
+
+**Request Body:**
+
+```json
+{
+  "key": "uploads/profile-photos/USER123/abc.jpg"
+}
+```
+
+**Response (200):**
+
+```json
+{
+  "success": true,
+  "message": "Upload confirmed",
+  "data": {
+    "key": "uploads/profile-photos/USER123/abc.jpg",
+    "imageUrl": "https://carpool-dev-uploads.s3.eu-west-1.amazonaws.com/uploads/profile-photos/USER123/abc.jpg",
+    "contentType": "image/jpeg",
+    "size": 245760
+  }
+}
+```
+
+### `POST /uploads/view`
+
+Get a presigned GET URL for viewing a private image (valid 1 hour).
+
+**Request Body:**
+
+```json
+{
+  "key": "uploads/profile-photos/USER123/abc.jpg"
+}
+```
+
+**Response (200):**
+
+```json
+{
+  "success": true,
+  "message": "View URL generated",
+  "data": {
+    "viewUrl": "https://carpool-dev-uploads.s3...?X-Amz-...",
+    "expiresIn": 3600
+  }
+}
+```
+
+### `DELETE /uploads`
+
+Delete a file from S3. You can only delete your own uploads.
+
+**Request Body:**
+
+```json
+{
+  "key": "uploads/profile-photos/USER123/abc.jpg"
+}
+```
+
+**Response (200):**
+
+```json
+{
+  "success": true,
+  "message": "Upload deleted",
+  "data": {
+    "deleted": true,
+    "key": "uploads/profile-photos/USER123/abc.jpg"
+  }
+}
+```
+
+### Profile Photo Default
+
+All user profiles now return:
+- `profilePhoto` — S3 key (defaults to `defaults/default-avatar.svg` when no photo is set)
+- `profilePhotoUrl` — presigned GET URL (valid 1 hour) that can be used directly in `<img src="...">`
+
+---
+
 ## Admin Endpoints
 
 All admin endpoints require **admin role**. Regular users will receive `403 FORBIDDEN`.
@@ -2018,9 +2188,34 @@ const geojson = {
 };
 ```
 
+### 7. Upload a Profile Photo
+
+```
+1. POST /uploads/presign { category: "profile-photo", contentType: "image/jpeg" }
+   → get uploadUrl + key
+2. PUT {uploadUrl} with file body and Content-Type header
+   → upload directly to S3
+3. POST /uploads/confirm { key }
+   → verify upload, get imageUrl
+4. PUT /users/profile { profilePhoto: key }
+   → save the S3 key to user profile
+```
+
+The `profilePhotoUrl` field on user profiles is a presigned URL (valid 1 hour) that can be used directly in `<img>` tags. It defaults to a PSRide-branded avatar when no photo is set.
+
 ---
 
 ## Changelog
+
+### v1.3.0 — March 16, 2026
+- Added [Upload Endpoints](#upload-endpoints) — S3 presigned URL image uploads for profile photos, driver documents, and vehicle photos
+- Added `profilePhotoUrl` field to user profile responses (presigned GET URL, valid 1 hour)
+- Default profile avatar (`defaults/default-avatar.svg`) returned when no photo is set
+- New endpoints: `POST /uploads/presign`, `POST /uploads/confirm`, `POST /uploads/view`, `DELETE /uploads`
+- Added upload workflow (section 7) to Common Workflows
+- S3 bucket CORS configured for browser-based presigned URL uploads
+- Terraform S3 module expanded with CORS, encryption, and lifecycle rules
+- `S3_UPLOAD_BUCKET` environment variable wired into Lambda across all environments
 
 ### v1.2.0 — March 1, 2026
 - Added [Environments](#environments) section with dev / staging / production URLs

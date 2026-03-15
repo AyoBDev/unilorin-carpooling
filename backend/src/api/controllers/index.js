@@ -18,6 +18,7 @@ const RatingController = require('./RatingController');
 const NotificationController = require('./NotificationController');
 const SafetyController = require('./SafetyController');
 const ReportController = require('./ReportController');
+const UploadController = require('./UploadController');
 
 module.exports = {
   AuthController,
@@ -28,4 +29,5 @@ module.exports = {
   NotificationController,
   SafetyController,
   ReportController,
+  UploadController,
 };

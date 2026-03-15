@@ -81,6 +81,7 @@ module "lambda" {
   # ── Environment variables passed to ALL functions ──────
   environment_variables = {
     DYNAMODB_TABLE         = module.database.table_name
+    S3_UPLOAD_BUCKET       = module.storage.bucket_name
     REDIS_ENDPOINT         = var.enable_vpc ? module.cache[0].redis_endpoint : ""
     CACHE_ENABLED          = var.enable_vpc ? "true" : "false"
     JWT_SECRET             = var.jwt_secret

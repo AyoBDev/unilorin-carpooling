@@ -18,6 +18,7 @@ const RatingService = require('./RatingService');
 const SafetyService = require('./SafetyService');
 const MatchingService = require('./MatchingService');
 const ReportingService = require('./ReportingService');
+const UploadService = require('./UploadService');
 
 /**
  * Service instances (singletons for dependency injection)
@@ -31,6 +32,7 @@ let ratingServiceInstance = null;
 let safetyServiceInstance = null;
 let matchingServiceInstance = null;
 let reportingServiceInstance = null;
+let uploadServiceInstance = null;
 
 /**
  * Get AuthService instance
@@ -132,6 +134,17 @@ const getReportingService = () => {
 };
 
 /**
+ * Get UploadService instance
+ * @returns {UploadService}
+ */
+const getUploadService = () => {
+  if (!uploadServiceInstance) {
+    uploadServiceInstance = new UploadService();
+  }
+  return uploadServiceInstance;
+};
+
+/**
  * Reset all service instances (useful for testing)
  */
 const resetServices = () => {
@@ -144,6 +157,7 @@ const resetServices = () => {
   safetyServiceInstance = null;
   matchingServiceInstance = null;
   reportingServiceInstance = null;
+  uploadServiceInstance = null;
 };
 
 /**
@@ -160,6 +174,7 @@ const initializeServices = () => ({
   safetyService: getSafetyService(),
   matchingService: getMatchingService(),
   reportingService: getReportingService(),
+  uploadService: getUploadService(),
 });
 
 module.exports = {
@@ -173,6 +188,7 @@ module.exports = {
   SafetyService,
   MatchingService,
   ReportingService,
+  UploadService,
 
   // Singleton getters
   getAuthService,
@@ -184,6 +200,7 @@ module.exports = {
   getSafetyService,
   getMatchingService,
   getReportingService,
+  getUploadService,
 
   // Utilities
   resetServices,
