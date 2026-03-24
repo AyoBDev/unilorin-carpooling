@@ -241,7 +241,9 @@ class UserService {
         updatedFields: Object.keys(value),
       });
 
-      return this._buildProfileResponse(updatedUser);
+      const profile = this._buildProfileResponse(updatedUser);
+      profile.profilePhotoUrl = await this._getSignedPhotoUrl(profile.profilePhoto);
+      return profile;
     } catch (error) {
       logger.error('Failed to update profile', {
         action: 'PROFILE_UPDATE_FAILED',
@@ -1587,6 +1589,7 @@ class UserService {
       isDriver: user.isDriver,
       isActive: user.isActive,
       profilePhoto: user.profilePhoto || 'defaults/default-avatar.svg',
+      bio: user.bio || null,
       averageRating: user.averageRating || 0,
       totalRatings: user.totalRatings || 0,
       // Role-specific fields

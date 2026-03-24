@@ -105,6 +105,24 @@ describe('UserService', () => {
       expect(result.statistics.totalBookings).toBe(5);
     });
 
+    it('should return bio in profile response', async () => {
+      const user = createMockUser({ bio: 'Final year EE student' });
+      mockUserRepo.findById.mockResolvedValue(user);
+
+      const result = await userService.getProfile(user.userId);
+
+      expect(result.bio).toBe('Final year EE student');
+    });
+
+    it('should return null bio when not set', async () => {
+      const user = createMockUser();
+      mockUserRepo.findById.mockResolvedValue(user);
+
+      const result = await userService.getProfile(user.userId);
+
+      expect(result.bio).toBeNull();
+    });
+
     it('should throw NotFoundError when user not found', async () => {
       mockUserRepo.findById.mockResolvedValue(null);
 
@@ -149,6 +167,42 @@ describe('UserService', () => {
       mockUserRepo.findByEmail.mockResolvedValue(createMockUser());
 
       await expect(userService.updateProfile(user.userId, { email: 'taken@unilorin.edu.ng' })).rejects.toThrow();
+    });
+
+    it('should accept a single field (partial update)', async () => {
+      const user = createMockUser();
+      validateUserProfile.mockReturnValue({ error: null, value: { bio: 'Hello world' } });
+      mockUserRepo.findById.mockResolvedValue(user);
+      mockUserRepo.updateProfile.mockResolvedValue({ ...user, bio: 'Hello world' });
+
+      const result = await userService.updateProfile(user.userId, { bio: 'Hello world' });
+
+      expect(result.bio).toBe('Hello world');
+      expect(result.firstName).toBe(user.firstName);
+    });
+
+    it('should return bio and profilePhotoUrl in response', async () => {
+      const user = createMockUser({ bio: 'CS student', profilePhoto: 'uploads/photo.jpg' });
+      validateUserProfile.mockReturnValue({ error: null, value: { firstName: 'New' } });
+      mockUserRepo.findById.mockResolvedValue(user);
+      mockUserRepo.updateProfile.mockResolvedValue({ ...user, firstName: 'New' });
+
+      const result = await userService.updateProfile(user.userId, { firstName: 'New' });
+
+      expect(result.bio).toBe('CS student');
+      expect(result).toHaveProperty('profilePhotoUrl');
+      expect(result).toHaveProperty('profilePhoto');
+    });
+
+    it('should return null bio when not set', async () => {
+      const user = createMockUser();
+      validateUserProfile.mockReturnValue({ error: null, value: { firstName: 'Updated' } });
+      mockUserRepo.findById.mockResolvedValue(user);
+      mockUserRepo.updateProfile.mockResolvedValue({ ...user, firstName: 'Updated' });
+
+      const result = await userService.updateProfile(user.userId, { firstName: 'Updated' });
+
+      expect(result.bio).toBeNull();
     });
   });
 

@@ -560,6 +560,8 @@ Get the authenticated user's own profile.
 
 ```json
 {
+  "success": true,
+  "message": "Profile retrieved",
   "data": {
     "user": {
       "userId": "5b6ffaf1-...",
@@ -567,19 +569,22 @@ Get the authenticated user's own profile.
       "firstName": "John",
       "lastName": "Doe",
       "phone": "08012345678",
+      "phoneVerified": true,
       "role": "student",
+      "isVerified": true,
+      "isDriver": false,
+      "isActive": true,
+      "profilePhoto": "defaults/default-avatar.svg",
+      "profilePhotoUrl": "https://carpool-dev-uploads.s3.eu-west-1.amazonaws.com/defaults/default-avatar.svg?X-Amz-...",
+      "bio": null,
+      "averageRating": 4.7,
+      "totalRatings": 12,
       "matricNumber": "21/52HP029",
       "department": "Electrical Engineering",
       "faculty": "Engineering",
-      "profilePhoto": null,
-      "bio": null,
-      "isDriver": false,
-      "driverVerified": false,
-      "emailVerified": true,
-      "status": "active",
-      "averageRating": 4.7,
-      "totalRatings": 12,
-      "createdAt": "2026-03-01T08:00:00.000Z"
+      "createdAt": "2026-03-01T08:00:00.000Z",
+      "updatedAt": "2026-03-10T14:00:00.000Z",
+      "lastLoginAt": "2026-03-24T08:00:00.000Z"
     }
   }
 }
@@ -589,7 +594,7 @@ Get the authenticated user's own profile.
 
 ### PUT /users/profile
 
-Update profile fields.
+Update profile fields. All fields are optional — send only the fields you want to change.
 
 **Auth required.**
 
@@ -602,8 +607,51 @@ Update profile fields.
   "phone": "08012345678",
   "department": "Computer Science",
   "faculty": "Communication and Information Sciences",
-  "profilePhoto": "https://example.com/photo.jpg",
+  "profilePhoto": "uploads/profile-photos/USER123/abc.jpg",
   "bio": "Final year student"
+}
+```
+
+| Field | Type | Constraints | Notes |
+|-------|------|-------------|-------|
+| `firstName` | string | 2–50 chars | |
+| `lastName` | string | 2–50 chars | |
+| `phone` | string | Nigerian format | Changing phone resets `phoneVerified` |
+| `department` | string | max 100 chars | |
+| `faculty` | string | max 100 chars | |
+| `profilePhoto` | string | URI, max 500 chars | S3 key from upload flow |
+| `bio` | string | max 500 chars | |
+
+**Response `200`**
+
+```json
+{
+  "success": true,
+  "message": "Profile updated successfully",
+  "data": {
+    "user": {
+      "userId": "5b6ffaf1-...",
+      "email": "john.doe@unilorin.edu.ng",
+      "firstName": "John",
+      "lastName": "Doe",
+      "phone": "08012345678",
+      "phoneVerified": true,
+      "role": "student",
+      "isVerified": true,
+      "isDriver": false,
+      "isActive": true,
+      "profilePhoto": "uploads/profile-photos/USER123/abc.jpg",
+      "profilePhotoUrl": "https://carpool-dev-uploads.s3.eu-west-1.amazonaws.com/uploads/profile-photos/USER123/abc.jpg?X-Amz-...",
+      "bio": "Final year student",
+      "averageRating": 4.7,
+      "totalRatings": 12,
+      "matricNumber": "21/52HP029",
+      "department": "Computer Science",
+      "faculty": "Communication and Information Sciences",
+      "createdAt": "2026-03-01T08:00:00.000Z",
+      "updatedAt": "2026-03-24T10:30:00.000Z"
+    }
+  }
 }
 ```
 
@@ -2206,6 +2254,12 @@ The `profilePhotoUrl` field on user profiles is a presigned URL (valid 1 hour) t
 ---
 
 ## Changelog
+
+### v1.3.1 — March 24, 2026
+- `PUT /users/profile` now returns the full updated user profile including `profilePhoto`, `profilePhotoUrl`, and `bio`
+- Updated `GET /users/profile` and `PUT /users/profile` response examples to match actual response shape
+- Clarified that all profile update fields are optional — send only what you want to change
+- Added field constraints table to `PUT /users/profile` documentation
 
 ### v1.3.0 — March 16, 2026
 - Added [Upload Endpoints](#upload-endpoints) — S3 presigned URL image uploads for profile photos, driver documents, and vehicle photos
