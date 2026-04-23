@@ -21,14 +21,16 @@ class VehicleRepository extends BaseRepository {
    * @returns {Promise<Object>} Vehicle record
    */
   async create(userId, vehicleData) {
-    const vehicleId = vehicleData.id || `VEHICLE#${nanoid()}`;
+    const vehicleId = vehicleData.vehicleId || vehicleData.id || `VEHICLE#${nanoid()}`;
     const timestamp = new Date().toISOString();
+    const plateNumber = vehicleData.plateNumber || '';
 
     const item = {
       PK: `USER#${userId}`,
-      SK: vehicleId,
+      SK: vehicleId.startsWith('VEHICLE#') ? vehicleId : `VEHICLE#${vehicleId}`,
       ...vehicleData,
       id: vehicleId,
+      vehicleId,
       userId: `USER#${userId}`,
       isActive: vehicleData.isActive !== false,
       isVerified: false,
@@ -38,7 +40,7 @@ class VehicleRepository extends BaseRepository {
       // GSI for vehicle queries
       GSI1PK: vehicleData.isVerified ? 'VERIFIED_VEHICLE' : 'UNVERIFIED_VEHICLE',
       GSI1SK: timestamp,
-      GSI2PK: `VEHICLE#${vehicleData.plateNumber.toUpperCase()}`,
+      GSI2PK: plateNumber ? `VEHICLE#${plateNumber.toUpperCase()}` : `VEHICLE#${vehicleId}`,
       GSI2SK: userId,
     };
 

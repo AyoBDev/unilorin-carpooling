@@ -252,12 +252,28 @@ const paginate = (data, { page = 1, limit = 20, total = 0 } = {}) => {
  * Build paginated response
  */
 const paginatedSuccess = (data, pagination, message = 'Success') => {
-  const paginated = paginate(data, pagination);
+  const result = paginate(data, pagination);
   return success({
-    data: paginated.data,
-    meta: { pagination: paginated.pagination },
+    data: result.data,
+    meta: { pagination: result.pagination },
     message,
   });
+};
+
+/**
+ * Paginated response with Express shorthand support.
+ * Called as: paginated(res, message, data, pagination)
+ */
+const paginatedResponse = (res, message, data, pagination) => {
+  const result = paginate(data, pagination);
+  const body = {
+    success: true,
+    message: message || 'Success',
+    data: result.data,
+    meta: { pagination: result.pagination },
+    timestamp: toISO(),
+  };
+  return res.status(HTTP_STATUS.OK).json(body);
 };
 
 /**
@@ -452,6 +468,7 @@ module.exports = {
   // Pagination
   paginate,
   paginatedSuccess,
+  paginated: paginatedResponse,
 
   // Express helpers
   send,

@@ -13,6 +13,7 @@ const {
   DeleteCommand,
   QueryCommand,
   BatchGetCommand,
+  ScanCommand,
 } = require('@aws-sdk/lib-dynamodb');
 
 const { docClient, getTableName, GSI, handleDynamoDBError } = require('../config/dynamodb.config');
@@ -166,6 +167,18 @@ class RideRepository {
         'preferences',
         'route',
         'departureTime',
+        'departureDateTime',
+        'totalSeats',
+        'notes',
+        'cancelledAt',
+        'cancellationReason',
+        'cancelledBy',
+        'completedAt',
+        'startedAt',
+        'actualDuration',
+        'recurringDays',
+        'recurringEndDate',
+        'recurringInstanceCount',
       ];
 
       const updateExpression = [];
@@ -541,6 +554,245 @@ class RideRepository {
     const result = await this.getByDriverId(driverId, { startDate: date, limit: 20 });
     const items = result.items || result;
     return items.filter((r) => r.departureDate === date);
+  }
+
+  // ─── Aliases used by RideService ────────────────────────────────
+
+  /**
+   * Find a ride by ID (scans GSI4 since we don't know the date)
+   * Alias for RideService which calls findById(rideId) without a date.
+   * @param {string} rideId - Ride identifier
+   * @returns {Promise<Object|null>} Ride data or null
+   */
+  async findById(rideId) {
+    try {
+      const params = {
+        TableName: this.tableName,
+        IndexName: GSI.GSI4,
+        FilterExpression: 'rideId = :rideId',
+        ExpressionAttributeValues: {
+          ':rideId': rideId,
+        },
+      };
+
+      // Scan with filter since we don't know the date partition
+      const result = await docClient.send(
+        new QueryCommand({
+          TableName: this.tableName,
+          IndexName: GSI.GSI4,
+          KeyConditionExpression: 'begins_with(GSI4PK, :prefix)',
+          FilterExpression: 'rideId = :rideId',
+          ExpressionAttributeValues: {
+            ':prefix': 'STATUS#',
+            ':rideId': rideId,
+          },
+          Limit: 1,
+        }),
+      );
+
+      if (result.Items && result.Items.length > 0) {
+        return result.Items[0];
+      }
+
+      // Fallback: scan the table for the ride
+      const scanResult = await docClient.send(
+        new ScanCommand({
+          TableName: this.tableName,
+          FilterExpression: 'rideId = :rideId AND entityType = :et',
+          ExpressionAttributeValues: {
+            ':rideId': rideId,
+            ':et': 'RIDE',
+          },
+          Limit: 1,
+        }),
+      );
+
+      return (scanResult.Items && scanResult.Items[0]) || null;
+    } catch (error) {
+      return handleDynamoDBError(error, 'FindRideById');
+    }
+  }
+
+  /**
+   * Find rides by driver ID
+   * Alias for RideService which calls findByDriver(driverId)
+   * @param {string} driverId - Driver identifier
+   * @returns {Promise<Array>} List of rides
+   */
+  async findByDriver(driverId) {
+    const result = await this.getByDriverId(driverId);
+    return result.items || [];
+  }
+
+  /**
+   * Search rides by criteria
+   * Alias for RideService which calls search(criteria)
+   * @param {Object} criteria - Search criteria
+   * @returns {Promise<Array>} Matching rides
+   */
+  async search(criteria) {
+    const { departureDate, date, minSeats, maxPrice, status } = criteria;
+    const searchDate = departureDate || date;
+
+    if (searchDate) {
+      return this.searchAvailableRides({
+        date: searchDate,
+        minSeats: minSeats || 1,
+        maxPrice,
+        status: Array.isArray(status) ? status[0] : status || 'active',
+      });
+    }
+
+    // No date — get active rides across dates
+    const result = await this.getByStatus(
+      Array.isArray(status) ? status[0] : status || 'active',
+      { limit: 100 },
+    );
+    let rides = result.items || [];
+
+    if (minSeats) {
+      rides = rides.filter((r) => r.availableSeats >= minSeats);
+    }
+    if (maxPrice) {
+      rides = rides.filter((r) => r.pricePerSeat <= maxPrice);
+    }
+
+    return rides;
+  }
+
+  /**
+   * Get bookings for a ride
+   * @param {string} rideId - Ride identifier
+   * @returns {Promise<Array>} List of bookings
+   */
+  async getRideBookings(rideId) {
+    try {
+      const params = {
+        TableName: this.tableName,
+        IndexName: GSI.GSI2,
+        KeyConditionExpression: 'GSI2PK = :ridePk',
+        ExpressionAttributeValues: {
+          ':ridePk': `RIDE#${rideId}`,
+        },
+      };
+
+      const result = await docClient.send(new QueryCommand(params));
+      const items = result.Items || [];
+      return items.filter((item) => item.entityType === 'BOOKING');
+    } catch (error) {
+      // Return empty array if no bookings found
+      return [];
+    }
+  }
+
+  /**
+   * Add a pickup point to a ride
+   * @param {string} rideId - Ride identifier
+   * @param {Object} pickupPoint - Pickup point data
+   * @returns {Promise<Object>} Updated ride
+   */
+  async addPickupPoint(rideId, pickupPoint) {
+    const ride = await this.findById(rideId);
+    if (!ride) throw new Error('Ride not found');
+
+    const pickupPoints = ride.pickupPoints || [];
+    pickupPoints.push(pickupPoint);
+
+    return this.update(rideId, ride.departureDate, { pickupPoints });
+  }
+
+  /**
+   * Remove a pickup point from a ride
+   * @param {string} rideId - Ride identifier
+   * @param {string} pickupPointId - Pickup point ID to remove
+   * @returns {Promise<Object>} Updated ride
+   */
+  async removePickupPoint(rideId, pickupPointId) {
+    const ride = await this.findById(rideId);
+    if (!ride) throw new Error('Ride not found');
+
+    const pickupPoints = (ride.pickupPoints || []).filter(
+      (pp) => pp.pickupPointId !== pickupPointId,
+    );
+
+    // Re-order remaining points
+    pickupPoints.forEach((pp, index) => {
+      pp.order = index + 1;
+    });
+
+    return this.update(rideId, ride.departureDate, { pickupPoints });
+  }
+
+  /**
+   * Update ride status
+   * @param {string} rideId - Ride identifier
+   * @param {string} status - New status
+   * @param {Object} extraData - Additional data to set
+   * @returns {Promise<Object>} Updated ride
+   */
+  async updateStatus(rideId, status, extraData = {}) {
+    const ride = await this.findById(rideId);
+    if (!ride) throw new Error('Ride not found');
+
+    return this.update(rideId, ride.departureDate, { status, ...extraData });
+  }
+
+  /**
+   * Find rides by date
+   * Alias used by MatchingService._getCandidateRides
+   * @param {string} date - Departure date (YYYY-MM-DD)
+   * @returns {Promise<Array>} List of rides
+   */
+  async findByDate(date) {
+    return this.searchAvailableRides({ date, limit: 100 });
+  }
+
+  /**
+   * Find recurring ride instances by parent ride ID
+   * @param {string} parentRideId - Parent ride identifier
+   * @returns {Promise<Array>} List of recurring ride instances
+   */
+  async findRecurringInstances(parentRideId) {
+    try {
+      const result = await docClient.send(
+        new ScanCommand({
+          TableName: this.tableName,
+          FilterExpression: 'parentRideId = :parentId AND entityType = :et',
+          ExpressionAttributeValues: {
+            ':parentId': parentRideId,
+            ':et': 'RIDE',
+          },
+        }),
+      );
+
+      return result.Items || [];
+    } catch (error) {
+      return handleDynamoDBError(error, 'FindRecurringInstances');
+    }
+  }
+
+  /**
+   * Reorder pickup points for a ride
+   * @param {string} rideId - Ride identifier
+   * @param {Array} orderedIds - Array of pickup point IDs in new order
+   * @returns {Promise<Object>} Updated ride
+   */
+  async reorderPickupPoints(rideId, orderedIds) {
+    const ride = await this.findById(rideId);
+    if (!ride) throw new Error('Ride not found');
+
+    const currentPoints = ride.pickupPoints || [];
+    const reordered = orderedIds
+      .map((id, index) => {
+        const point = currentPoints.find((pp) => pp.pickupPointId === id);
+        if (point) {
+          return { ...point, order: index + 1 };
+        }
+        return null;
+      })
+      .filter(Boolean);
+
+    return this.update(rideId, ride.departureDate, { pickupPoints: reordered });
   }
 }
 

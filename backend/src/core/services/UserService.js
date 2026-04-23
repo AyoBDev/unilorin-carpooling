@@ -1030,13 +1030,9 @@ class UserService {
     });
 
     try {
-      const vehicle = await this.vehicleRepository.findById(vehicleId);
+      const vehicle = await this.vehicleRepository.findById(userId, vehicleId);
       if (!vehicle) {
         throw new NotFoundError('Vehicle not found', ERROR_CODES.VEHICLE_NOT_FOUND);
-      }
-
-      if (vehicle.userId !== userId) {
-        throw new ForbiddenError('Not authorized to update this vehicle', ERROR_CODES.FORBIDDEN);
       }
 
       // Validate updates
@@ -1051,7 +1047,7 @@ class UserService {
 
       filteredUpdates.updatedAt = formatDate(now());
 
-      const updatedVehicle = await this.vehicleRepository.update(vehicleId, filteredUpdates);
+      const updatedVehicle = await this.vehicleRepository.update(userId, vehicleId, filteredUpdates);
 
       return {
         vehicle: updatedVehicle,
@@ -1082,17 +1078,12 @@ class UserService {
     });
 
     try {
-      const vehicle = await this.vehicleRepository.findById(vehicleId);
+      const vehicle = await this.vehicleRepository.findById(userId, vehicleId);
       if (!vehicle) {
         throw new NotFoundError('Vehicle not found', ERROR_CODES.VEHICLE_NOT_FOUND);
       }
 
-      if (vehicle.userId !== userId) {
-        throw new ForbiddenError('Not authorized to remove this vehicle', ERROR_CODES.FORBIDDEN);
-      }
-
       // Check if vehicle has active rides
-      // This would require RideRepository - simplified for now
       if (vehicle.hasActiveRides) {
         throw new BadRequestError(
           'Cannot remove vehicle with active rides',
@@ -1100,13 +1091,14 @@ class UserService {
         );
       }
 
-      await this.vehicleRepository.delete(vehicleId);
+      // Soft-delete by deactivating
+      await this.vehicleRepository.deactivate(userId, vehicleId);
 
       // If it was the primary vehicle, set another as primary
       if (vehicle.isPrimary) {
         const remainingVehicles = await this.vehicleRepository.getUserVehicles(userId);
         if (remainingVehicles.length > 0) {
-          await this.vehicleRepository.setPrimary(userId, remainingVehicles[0].vehicleId);
+          await this.vehicleRepository.update(userId, remainingVehicles[0].vehicleId, { isPrimary: true });
         }
       }
 
@@ -1157,12 +1149,19 @@ class UserService {
     });
 
     try {
-      const vehicle = await this.vehicleRepository.findById(vehicleId);
-      if (!vehicle || vehicle.userId !== userId) {
+      const vehicle = await this.vehicleRepository.findById(userId, vehicleId);
+      if (!vehicle) {
         throw new NotFoundError('Vehicle not found', ERROR_CODES.VEHICLE_NOT_FOUND);
       }
 
-      await this.vehicleRepository.setPrimary(userId, vehicleId);
+      // Unset current primary vehicles, then set new primary
+      const allVehicles = await this.vehicleRepository.getUserVehicles(userId);
+      for (const v of allVehicles) {
+        if (v.isPrimary && v.vehicleId !== vehicleId) {
+          await this.vehicleRepository.update(userId, v.vehicleId, { isPrimary: false });
+        }
+      }
+      await this.vehicleRepository.update(userId, vehicleId, { isPrimary: true });
       await this.userRepository.updateProfile(userId, { primaryVehicleId: vehicleId });
 
       return {

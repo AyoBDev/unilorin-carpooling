@@ -63,16 +63,23 @@ class AuthController {
         role: result.user.role,
       });
 
+      const responseData = {
+        user: result.user,
+        accessToken: result.tokens.accessToken,
+        refreshToken: result.tokens.refreshToken,
+        expiresIn: result.tokens.expiresIn,
+        tokenType: result.tokens.tokenType,
+      };
+
+      // In non-production, include verification token for testing
+      if (process.env.NODE_ENV !== 'production' && result.verificationToken) {
+        responseData.verificationToken = result.verificationToken;
+      }
+
       return created(
         res,
         'Registration successful. Please check your email to verify your account.',
-        {
-          user: result.user,
-          accessToken: result.tokens.accessToken,
-          refreshToken: result.tokens.refreshToken,
-          expiresIn: result.tokens.expiresIn,
-          tokenType: result.tokens.tokenType,
-        },
+        responseData,
       );
     } catch (error) {
       return next(error);
@@ -155,9 +162,16 @@ class AuthController {
     try {
       const { email } = req.body;
 
-      await this.authService.resendVerificationEmail(email);
+      const result = await this.authService.resendVerificationEmail(email);
 
-      return success(res, 'Verification email sent. Please check your inbox.');
+      const responseData = { sent: result.sent };
+
+      // In non-production, include token so devs can verify without email access
+      if (process.env.NODE_ENV !== 'production' && result.verificationToken) {
+        responseData.verificationToken = result.verificationToken;
+      }
+
+      return success(res, 'Verification email sent. Please check your inbox.', responseData);
     } catch (error) {
       return next(error);
     }

@@ -423,9 +423,9 @@ class RideController {
       const { userId } = req.user;
       const { fromLat, fromLng, toLat, toLng, date, time, seats = 1 } = req.query;
 
-      const matches = await this.matchingService.findMatchingRides(userId, {
-        from: { lat: parseFloat(fromLat), lng: parseFloat(fromLng) },
-        to: { lat: parseFloat(toLat), lng: parseFloat(toLng) },
+      const matches = await this.matchingService.findMatchingRides({
+        from: fromLat && fromLng ? { lat: parseFloat(fromLat), lng: parseFloat(fromLng) } : undefined,
+        to: toLat && toLng ? { lat: parseFloat(toLat), lng: parseFloat(toLng) } : undefined,
         date,
         time,
         seats: parseInt(seats, 10),
@@ -445,7 +445,7 @@ class RideController {
     try {
       const { userId } = req.user;
 
-      const suggestions = await this.matchingService.getSuggestions(userId);
+      const suggestions = await this.matchingService.getSuggestedRides(userId);
 
       return success(res, 'Ride suggestions', { suggestions });
     } catch (error) {

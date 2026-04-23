@@ -38,10 +38,6 @@ router.get('/statistics', UserController.getStatistics);
 
 router.get('/ride-history', UserController.getRideHistory);
 
-// ─── PUBLIC USER PROFILE ───────────────────────────────────────
-
-router.get('/:userId', UserController.getUserById);
-
 // ─── DRIVER REGISTRATION ───────────────────────────────────────
 
 router.post(
@@ -89,10 +85,8 @@ router.put('/emergency-contacts/:contactId', sanitizeBody, UserController.update
 
 router.delete('/emergency-contacts/:contactId', UserController.deleteEmergencyContact);
 
-// ─── PREFERENCES ───────────────────────────────────────────────
+// ─── PUBLIC USER PROFILE (must be LAST — /:userId is a catch-all) ───
 
-router.get('/preferences', UserController.getPreferences);
-
-router.put('/preferences', sanitizeBody, UserController.updatePreferences);
+router.get('/:userId', UserController.getUserById);
 
 module.exports = router;

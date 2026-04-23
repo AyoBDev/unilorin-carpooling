@@ -241,7 +241,7 @@ class UserController {
    */
   async updateVehicle(req, res, next) {
     try {
-      const userId = req.user;
+      const { userId } = req.user;
       const { vehicleId } = req.params;
 
       const vehicle = await this.userService.updateVehicle(userId, vehicleId, req.body);
@@ -293,7 +293,7 @@ class UserController {
    */
   async addEmergencyContact(req, res, next) {
     try {
-      const userId = req.user;
+      const { userId } = req.user;
 
       const contact = await this.userService.addEmergencyContact(userId, req.body);
 

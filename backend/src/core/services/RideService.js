@@ -359,7 +359,7 @@ class RideService {
 
       filteredUpdates.updatedAt = formatDate(now());
 
-      const updatedRide = await this.rideRepository.update(rideId, filteredUpdates);
+      const updatedRide = await this.rideRepository.update(rideId, ride.departureDate, filteredUpdates);
 
       // Update status if seats changed
       if (filteredUpdates.availableSeats !== undefined) {
@@ -410,8 +410,10 @@ class RideService {
       const {
         date,
         time,
-        fromLocation,
-        toLocation,
+        from: fromLocation,
+        to: toLocation,
+        fromAddress,
+        toAddress,
         seats = 1,
         maxPrice,
         minRating,
@@ -431,7 +433,7 @@ class RideService {
       // Add time filter if provided
       if (time) {
         criteria.departureTimeStart = time;
-        criteria.departureTimeEnd = formatTime(addMinutes(parseDate(`${date}T${time}`), 120)); // 2 hour window
+        criteria.departureTimeEnd = formatTime(addMinutes(parseDate(`${date} ${time}`, 'YYYY-MM-DD HH:mm'), 120)); // 2 hour window
       }
 
       // Add price filter
@@ -443,12 +445,15 @@ class RideService {
       let rides = await this.rideRepository.search(criteria);
 
       // Filter by location proximity
-      if (fromLocation && fromLocation.coordinates) {
-        rides = this._filterByProximity(rides, fromLocation.coordinates, 'startLocation');
+      // fromLocation may be { lat, lng } directly or { coordinates: { lat, lng } }
+      const fromCoords = fromLocation?.coordinates || fromLocation;
+      if (fromCoords && (fromCoords.lat || fromCoords.latitude)) {
+        rides = this._filterByProximity(rides, fromCoords, 'startLocation');
       }
 
-      if (toLocation && toLocation.coordinates) {
-        rides = this._filterByProximity(rides, toLocation.coordinates, 'endLocation');
+      const toCoords = toLocation?.coordinates || toLocation;
+      if (toCoords && (toCoords.lat || toCoords.latitude)) {
+        rides = this._filterByProximity(rides, toCoords, 'endLocation');
       }
 
       // Filter by driver rating
@@ -720,7 +725,7 @@ class RideService {
       });
 
       // Update driver statistics (cancelled ride count)
-      await this.userRepository.incrementDriverCancelledRides(driverId);
+      await this.userRepository.incrementRideCount(driverId, 'driver', 'cancelled');
 
       logger.info('Ride cancelled successfully', {
         action: RIDE_EVENTS.RIDE_CANCELLED,
@@ -1051,7 +1056,7 @@ class RideService {
       });
 
       // Update driver statistics
-      await this.userRepository.incrementDriverCompletedRides(driverId);
+      await this.userRepository.incrementRideCount(driverId, 'driver', 'completed');
 
       logger.info('Ride completed', {
         action: RIDE_EVENTS.RIDE_COMPLETED,
@@ -1767,7 +1772,7 @@ class RideService {
     );
 
     // Update parent ride with recurring info
-    await this.rideRepository.update(parentRide.rideId, {
+    await this.rideRepository.update(parentRide.rideId, parentRide.departureDate, {
       recurringDays,
       recurringEndDate: formatDate(maxEndDate),
       recurringInstanceCount: instances.length,

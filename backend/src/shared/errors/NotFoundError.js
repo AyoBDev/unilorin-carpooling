@@ -11,29 +11,22 @@ const AppError = require('./AppError');
 /**
  * NotFoundError - When a requested resource doesn't exist
  * @extends AppError
+ *
+ * Supports two calling conventions:
+ *   new NotFoundError('User not found', 'USER_NOT_FOUND')  – message + error code
+ *   NotFoundError.user(userId)                              – static factory
  */
 class NotFoundError extends AppError {
   /**
    * Create a NotFoundError
-   * @param {string} resource - Name of the resource (e.g., 'User', 'Ride')
-   * @param {string} identifier - Resource identifier (e.g., userId, rideId)
+   * @param {string} message - Human-readable error message
+   * @param {string} code - Error code (e.g., 'USER_NOT_FOUND')
    */
-  constructor(resource = 'Resource', identifier = null) {
-    const message = identifier
-      ? `${resource} with ID '${identifier}' not found`
-      : `${resource} not found`;
-
+  constructor(message = 'Resource not found', code = 'NOT_FOUND') {
     super(message, {
-      code: 'NOT_FOUND',
+      code,
       statusCode: 404,
-      details: {
-        resource,
-        ...(identifier && { identifier }),
-      },
     });
-
-    this.resource = resource;
-    this.identifier = identifier;
   }
 
   /**
@@ -42,7 +35,10 @@ class NotFoundError extends AppError {
    * @returns {NotFoundError}
    */
   static user(identifier = null) {
-    return new NotFoundError('User', identifier);
+    const msg = identifier
+      ? `User with ID '${identifier}' not found`
+      : 'User not found';
+    return new NotFoundError(msg, 'USER_NOT_FOUND');
   }
 
   /**
@@ -51,7 +47,10 @@ class NotFoundError extends AppError {
    * @returns {NotFoundError}
    */
   static ride(identifier = null) {
-    return new NotFoundError('Ride', identifier);
+    const msg = identifier
+      ? `Ride with ID '${identifier}' not found`
+      : 'Ride not found';
+    return new NotFoundError(msg, 'RIDE_NOT_FOUND');
   }
 
   /**
@@ -60,7 +59,10 @@ class NotFoundError extends AppError {
    * @returns {NotFoundError}
    */
   static booking(identifier = null) {
-    return new NotFoundError('Booking', identifier);
+    const msg = identifier
+      ? `Booking with ID '${identifier}' not found`
+      : 'Booking not found';
+    return new NotFoundError(msg, 'BOOKING_NOT_FOUND');
   }
 
   /**
@@ -69,7 +71,10 @@ class NotFoundError extends AppError {
    * @returns {NotFoundError}
    */
   static vehicle(identifier = null) {
-    return new NotFoundError('Vehicle', identifier);
+    const msg = identifier
+      ? `Vehicle with ID '${identifier}' not found`
+      : 'Vehicle not found';
+    return new NotFoundError(msg, 'VEHICLE_NOT_FOUND');
   }
 
   /**
@@ -78,7 +83,10 @@ class NotFoundError extends AppError {
    * @returns {NotFoundError}
    */
   static driver(identifier = null) {
-    return new NotFoundError('Driver', identifier);
+    const msg = identifier
+      ? `Driver with ID '${identifier}' not found`
+      : 'Driver not found';
+    return new NotFoundError(msg, 'DRIVER_NOT_FOUND');
   }
 
   /**
@@ -87,7 +95,10 @@ class NotFoundError extends AppError {
    * @returns {NotFoundError}
    */
   static notification(identifier = null) {
-    return new NotFoundError('Notification', identifier);
+    const msg = identifier
+      ? `Notification with ID '${identifier}' not found`
+      : 'Notification not found';
+    return new NotFoundError(msg, 'NOTIFICATION_NOT_FOUND');
   }
 
   /**
@@ -96,7 +107,10 @@ class NotFoundError extends AppError {
    * @returns {NotFoundError}
    */
   static rating(identifier = null) {
-    return new NotFoundError('Rating', identifier);
+    const msg = identifier
+      ? `Rating with ID '${identifier}' not found`
+      : 'Rating not found';
+    return new NotFoundError(msg, 'RATING_NOT_FOUND');
   }
 
   /**
@@ -105,7 +119,10 @@ class NotFoundError extends AppError {
    * @returns {NotFoundError}
    */
   static pickupPoint(identifier = null) {
-    return new NotFoundError('Pickup point', identifier);
+    const msg = identifier
+      ? `Pickup point with ID '${identifier}' not found`
+      : 'Pickup point not found';
+    return new NotFoundError(msg, 'PICKUP_POINT_NOT_FOUND');
   }
 
   /**
@@ -114,7 +131,10 @@ class NotFoundError extends AppError {
    * @returns {NotFoundError}
    */
   static route(identifier = null) {
-    return new NotFoundError('Route', identifier);
+    const msg = identifier
+      ? `Route with ID '${identifier}' not found`
+      : 'Route not found';
+    return new NotFoundError(msg, 'ROUTE_NOT_FOUND');
   }
 
   /**
@@ -123,22 +143,22 @@ class NotFoundError extends AppError {
    * @returns {NotFoundError}
    */
   static endpoint(path) {
-    const error = new NotFoundError('Endpoint', path);
-    error.message = `The requested endpoint '${path}' does not exist`;
-    error.code = 'ENDPOINT_NOT_FOUND';
-    return error;
+    return new NotFoundError(
+      `The requested endpoint '${path}' does not exist`,
+      'ENDPOINT_NOT_FOUND',
+    );
   }
 
   /**
-   * Create for generic resource with custom message
-   * @param {string} message - Custom message
-   * @param {string} resource - Resource name
+   * Create for emergency contact not found
+   * @param {string} identifier - Contact ID
    * @returns {NotFoundError}
    */
-  static custom(message, resource = 'Resource') {
-    const error = new NotFoundError(resource);
-    error.message = message;
-    return error;
+  static emergencyContact(identifier = null) {
+    const msg = identifier
+      ? `Emergency contact with ID '${identifier}' not found`
+      : 'Emergency contact not found';
+    return new NotFoundError(msg, 'EMERGENCY_CONTACT_NOT_FOUND');
   }
 }
 

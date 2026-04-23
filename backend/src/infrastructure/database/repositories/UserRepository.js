@@ -338,25 +338,60 @@ class UserRepository {
 
       // Build update expression dynamically
       const allowedUpdates = [
+        // Personal info
         'firstName',
         'lastName',
         'phone',
         'profileImage',
+        'profilePhoto',
+        'profilePhotoUpdatedAt',
+        'bio',
+        // Institution
         'department',
         'faculty',
         'level',
         'designation',
+        // Driver fields
         'isDriver',
         'driverVerified',
+        'driverVerificationStatus',
         'licenseNumber',
         'licenseExpiry',
+        'driverRegisteredAt',
+        'driverVerifiedAt',
+        'driverVerifiedBy',
+        'driverRejectionReason',
+        'primaryVehicleId',
         'documents',
         'vehicles',
+        // Emergency contacts
         'emergencyContacts',
+        // Verification & auth
         'emailVerified',
+        'emailVerificationToken',
+        'verificationTokenExpiry',
         'phoneVerified',
+        'emailChangedAt',
+        'phoneChangedAt',
+        // Status & account
         'status',
+        'isActive',
+        'isVerified',
+        'isDeleted',
+        'isSuspended',
+        'deletedAt',
+        'deletionReason',
+        'suspendedAt',
+        'suspendedBy',
+        'suspensionReason',
+        'reactivatedAt',
+        'reactivatedBy',
         'lastLoginAt',
+        // Preferences
+        'preferences',
+        // Admin
+        'role',
+        'updatedBy',
       ];
 
       const updateExpression = [];
@@ -522,8 +557,59 @@ class UserRepository {
     }
 
     const emergencyContacts = (user.emergencyContacts || []).filter(
-      (contact) => contact.id !== contactId,
+      (contact) => contact.id !== contactId && contact.contactId !== contactId,
     );
+
+    return this.update(userId, { emergencyContacts });
+  }
+
+  /**
+   * Update emergency contact
+   * @param {string} userId - User identifier
+   * @param {string} contactId - Contact identifier
+   * @param {Object} updates - Contact updates
+   * @returns {Promise<Object|null>} Updated contact or null if not found
+   */
+  async updateEmergencyContact(userId, contactId, updates) {
+    const user = await this.getById(userId);
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    const emergencyContacts = user.emergencyContacts || [];
+    const contactIndex = emergencyContacts.findIndex(
+      (c) => c.id === contactId || c.contactId === contactId,
+    );
+
+    if (contactIndex === -1) {
+      return null;
+    }
+
+    emergencyContacts[contactIndex] = {
+      ...emergencyContacts[contactIndex],
+      ...updates,
+    };
+
+    await this.update(userId, { emergencyContacts });
+    return emergencyContacts[contactIndex];
+  }
+
+  /**
+   * Set primary emergency contact
+   * @param {string} userId - User identifier
+   * @param {string} contactId - Contact identifier
+   * @returns {Promise<Object>} Updated user
+   */
+  async setPrimaryEmergencyContact(userId, contactId) {
+    const user = await this.getById(userId);
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    const emergencyContacts = (user.emergencyContacts || []).map((c) => ({
+      ...c,
+      isPrimary: c.id === contactId || c.contactId === contactId,
+    }));
 
     return this.update(userId, { emergencyContacts });
   }
@@ -1193,6 +1279,171 @@ class UserRepository {
       completeness,
       missingFields: [...missingFields, ...missingDriverFields],
     };
+  }
+
+  // ── Statistics & History ────────────────────────────────
+
+  /**
+   * Get user statistics (stored directly on the user item)
+   * @param {string} userId - User identifier
+   * @returns {Promise<Object>} User statistics
+   */
+  async getUserStatistics(userId) {
+    const user = await this.getById(userId);
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    return {
+      totalBookings: user.totalBookings || 0,
+      completedRidesAsPassenger: user.completedRides || 0,
+      cancelledBookings: user.cancelledRides || 0,
+      noShowCount: user.noShows || 0,
+      totalSpent: user.totalSpent || 0,
+      totalRidesOffered: user.totalRidesAsDriver || 0,
+      completedRidesAsDriver: user.completedRidesAsDriver || 0,
+      cancelledRidesAsDriver: user.cancelledRidesAsDriver || 0,
+      totalEarnings: user.totalEarnings || 0,
+      totalPassengersCarried: user.totalPassengersCarried || 0,
+      ratingBreakdown: user.ratingBreakdown || { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 },
+    };
+  }
+
+  /**
+   * Get ride history for a user
+   * @param {string} userId - User identifier
+   * @param {Object} options - Query options
+   * @returns {Promise<Object>} Ride history with pagination
+   */
+  async getRideHistory(userId, options = {}) {
+    const { role = 'passenger', page = 1, limit = 20 } = options;
+
+    try {
+      const skPrefix = role === 'driver' ? 'RIDE#' : 'BOOKING#';
+
+      const params = {
+        TableName: this.tableName,
+        KeyConditionExpression: 'PK = :pk AND begins_with(SK, :skPrefix)',
+        ExpressionAttributeValues: {
+          ':pk': `USER#${userId}`,
+          ':skPrefix': skPrefix,
+        },
+        ScanIndexForward: false,
+      };
+
+      const result = await docClient.send(new QueryCommand(params));
+      const allItems = (result.Items || []).map(({ passwordHash: _, ...item }) => item);
+
+      const total = allItems.length;
+      const startIndex = (page - 1) * limit;
+      const items = allItems.slice(startIndex, startIndex + limit);
+
+      return { items, total };
+    } catch (error) {
+      return handleDynamoDBError(error, 'GetRideHistory');
+    }
+  }
+
+  // ── Driver Documents ────────────────────────────────────
+
+  /**
+   * Get driver documents for a user
+   * @param {string} userId - User identifier
+   * @returns {Promise<Array>} List of driver documents
+   */
+  async getDriverDocuments(userId) {
+    const user = await this.getById(userId);
+    if (!user) {
+      throw new Error('User not found');
+    }
+    return user.documents || [];
+  }
+
+  /**
+   * Add a driver document
+   * @param {string} userId - User identifier
+   * @param {Object} document - Document data
+   * @returns {Promise<Object>} Updated user
+   */
+  async addDriverDocument(userId, document) {
+    const user = await this.getById(userId);
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    const documents = user.documents || [];
+    documents.push(document);
+
+    return this.update(userId, { documents });
+  }
+
+  /**
+   * Update a driver document by documentId
+   * @param {string} documentId - Document identifier
+   * @param {Object} updates - Document updates
+   * @returns {Promise<Object>} Updated document with userId
+   */
+  async updateDriverDocument(documentId, updates) {
+    const params = {
+      TableName: this.tableName,
+      FilterExpression: 'entityType = :type',
+      ExpressionAttributeValues: { ':type': 'USER' },
+    };
+
+    const result = await docClient.send(new ScanCommand(params));
+    const users = result.Items || [];
+
+    for (const user of users) {
+      const documents = user.documents || [];
+      const docIndex = documents.findIndex((d) => d.documentId === documentId);
+      if (docIndex !== -1) {
+        documents[docIndex] = { ...documents[docIndex], ...updates };
+        await this.update(user.userId, { documents });
+        return { ...documents[docIndex], userId: user.userId };
+      }
+    }
+
+    throw new Error('Document not found');
+  }
+
+  // ── Admin Queries ───────────────────────────────────────
+
+  /**
+   * Find all users with filters and pagination
+   * @param {Object} filters - Query filters
+   * @returns {Promise<Object>} Users list with pagination info
+   */
+  async findAll(filters = {}) {
+    const { page = 1, limit = 20, search } = filters;
+
+    try {
+      const params = {
+        TableName: this.tableName,
+        FilterExpression: 'entityType = :type',
+        ExpressionAttributeValues: {
+          ':type': 'USER',
+        },
+      };
+
+      if (search) {
+        params.FilterExpression +=
+          ' AND (contains(firstName, :search) OR contains(lastName, :search) OR contains(email, :search))';
+        params.ExpressionAttributeValues[':search'] = search.toLowerCase();
+      }
+
+      const result = await docClient.send(new ScanCommand(params));
+      const allItems = (result.Items || []).map(({ passwordHash: _, ...user }) => user);
+
+      const items = allItems.map((user) => this._addComputedFields(user));
+
+      const total = items.length;
+      const startIndex = (page - 1) * limit;
+      const paginatedItems = items.slice(startIndex, startIndex + limit);
+
+      return { items: paginatedItems, total };
+    } catch (error) {
+      return handleDynamoDBError(error, 'FindAllUsers');
+    }
   }
 }
 
