@@ -566,32 +566,27 @@ class RideRepository {
    */
   async findById(rideId) {
     try {
-      const params = {
-        TableName: this.tableName,
-        IndexName: GSI.GSI4,
-        FilterExpression: 'rideId = :rideId',
-        ExpressionAttributeValues: {
-          ':rideId': rideId,
-        },
-      };
+      // Try querying GSI4 with known statuses first (most rides are active)
+      const statuses = ['active', 'in_progress', 'completed', 'cancelled'];
 
-      // Scan with filter since we don't know the date partition
-      const result = await docClient.send(
-        new QueryCommand({
-          TableName: this.tableName,
-          IndexName: GSI.GSI4,
-          KeyConditionExpression: 'begins_with(GSI4PK, :prefix)',
-          FilterExpression: 'rideId = :rideId',
-          ExpressionAttributeValues: {
-            ':prefix': 'STATUS#',
-            ':rideId': rideId,
-          },
-          Limit: 1,
-        }),
-      );
+      for (const status of statuses) {
+        const result = await docClient.send(
+          new QueryCommand({
+            TableName: this.tableName,
+            IndexName: GSI.GSI4,
+            KeyConditionExpression: 'GSI4PK = :status',
+            FilterExpression: 'rideId = :rideId',
+            ExpressionAttributeValues: {
+              ':status': `STATUS#${status}`,
+              ':rideId': rideId,
+            },
+            Limit: 1,
+          }),
+        );
 
-      if (result.Items && result.Items.length > 0) {
-        return result.Items[0];
+        if (result.Items && result.Items.length > 0) {
+          return result.Items[0];
+        }
       }
 
       // Fallback: scan the table for the ride
@@ -603,7 +598,6 @@ class RideRepository {
             ':rideId': rideId,
             ':et': 'RIDE',
           },
-          Limit: 1,
         }),
       );
 
@@ -793,6 +787,82 @@ class RideRepository {
       .filter(Boolean);
 
     return this.update(rideId, ride.departureDate, { pickupPoints: reordered });
+  }
+  /**
+   * Find rides by date range — alias for ReportingService
+   */
+  async findByDateRange(startDate, endDate, options = {}) {
+    const result = await this.searchByDateRange(startDate, endDate, options);
+    return result.items || [];
+  }
+
+  /**
+   * Find rides by driver within a date range — alias for ReportingService
+   */
+  async findByDriverAndDateRange(driverId, startDate, endDate) {
+    const rides = await this.findByDriver(driverId);
+    return rides.filter((r) => {
+      const date = r.departureDate || r.createdAt;
+      return date >= startDate && date <= endDate;
+    });
+  }
+
+  /**
+   * Update seats — finds ride by ID then calls updateAvailableSeats
+   * Alias for BookingService which calls updateSeats(rideId, seatsChange)
+   */
+  async updateSeats(rideId, seatsChange) {
+    const ride = await this.findById(rideId);
+    if (!ride) throw new Error('Ride not found');
+    return this.updateAvailableSeats(rideId, ride.departureDate, seatsChange);
+  }
+
+  /**
+   * Find recurring rides (all active recurring rides)
+   * Alias for MatchingService
+   */
+  async findRecurring() {
+    try {
+      const result = await docClient.send(
+        new ScanCommand({
+          TableName: this.tableName,
+          FilterExpression: 'recurring = :recurring AND entityType = :et AND #status = :status',
+          ExpressionAttributeNames: { '#status': 'status' },
+          ExpressionAttributeValues: {
+            ':recurring': true,
+            ':et': 'RIDE',
+            ':status': 'active',
+          },
+        }),
+      );
+      return result.Items || [];
+    } catch (error) {
+      return handleDynamoDBError(error, 'FindRecurring');
+    }
+  }
+
+  /**
+   * Find rides by date and time range
+   * Alias for MatchingService
+   */
+  async findByDateAndTimeRange(date, startTime, endTime) {
+    try {
+      const params = {
+        TableName: this.tableName,
+        IndexName: GSI.GSI2,
+        KeyConditionExpression: 'GSI2PK = :date AND GSI2SK BETWEEN :start AND :end',
+        ExpressionAttributeValues: {
+          ':date': `DATE#${date}`,
+          ':start': `TIME#${startTime}`,
+          ':end': `TIME#${endTime}~`,
+        },
+      };
+
+      const result = await docClient.send(new QueryCommand(params));
+      return result.Items || [];
+    } catch (error) {
+      return handleDynamoDBError(error, 'FindByDateAndTimeRange');
+    }
   }
 }
 

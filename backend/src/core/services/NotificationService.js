@@ -855,7 +855,7 @@ class NotificationService {
       return { notification, alreadyRead: true };
     }
 
-    const updated = await this.notificationRepository.markAsRead(notificationId);
+    const updated = await this.notificationRepository.markAsRead(userId, notificationId);
     return { notification: updated, alreadyRead: false };
   }
 
@@ -865,8 +865,8 @@ class NotificationService {
    * @returns {Promise<Object>} Update result
    */
   async markAllAsRead(userId) {
-    const result = await this.notificationRepository.markAllAsRead(userId);
-    return { success: true, updatedCount: result.modifiedCount || 0 };
+    const updatedCount = await this.notificationRepository.markAllAsRead(userId);
+    return { success: true, updatedCount: updatedCount || 0 };
   }
 
   /**
@@ -886,7 +886,7 @@ class NotificationService {
       throw new BadRequestError('Not authorized', ERROR_CODES.FORBIDDEN);
     }
 
-    await this.notificationRepository.delete(notificationId);
+    await this.notificationRepository.deleteById(notificationId);
     return { success: true };
   }
 
@@ -1594,10 +1594,12 @@ class NotificationService {
    */
   async _logNotification(userId, notificationData) {
     try {
-      await this.notificationRepository.logNotification({
-        logId: randomUUID(),
+      await this.notificationRepository.create({
+        id: `LOG#${randomUUID()}`,
         userId,
         ...notificationData,
+        type: notificationData.type || 'log',
+        isRead: true,
         createdAt: formatDate(now()),
       });
     } catch (error) {

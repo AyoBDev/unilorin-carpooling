@@ -511,6 +511,18 @@ const addHours = (date, hours) => manipulate.add(date, hours, 'hour').toISOStrin
 const addDays = (date, days) => manipulate.add(date, days, 'day').toISOString();
 const addMinutes = (date, minutes) => manipulate.add(date, minutes, 'minute').toISOString();
 const isExpired = (date) => compare.isPast(date);
+const subtractMinutes = (date, minutes) => manipulate.subtract(date, minutes, 'minute').toISOString();
+
+// Convenience wrappers for ReportingService
+const startOfDay = (date) => manipulate.startOf(date, 'day').toISOString();
+const endOfDay = (date) => manipulate.endOf(date, 'day').toISOString();
+const startOfWeek = (date) => manipulate.startOf(date, 'week').toISOString();
+const endOfWeek = (date) => manipulate.endOf(date, 'week').toISOString();
+const startOfMonth = (date) => manipulate.startOf(date, 'month').toISOString();
+const endOfMonth = (date) => manipulate.endOf(date, 'month').toISOString();
+const getDaysBetween = (start, end) => dayjs(end).diff(dayjs(start), 'day');
+const formatDateReadable = (date) => display.forUser(date);
+const formatDateTime = (date) => format(date, DEFAULT_DATETIME_FORMAT);
 
 module.exports = {
   // Core
@@ -547,7 +559,17 @@ module.exports = {
   addHours,
   addDays,
   addMinutes,
+  subtractMinutes,
   isExpired,
+  startOfDay,
+  endOfDay,
+  startOfWeek,
+  endOfWeek,
+  startOfMonth,
+  endOfMonth,
+  getDaysBetween,
+  formatDateReadable,
+  formatDateTime,
 
   // Constants
   TIMEZONE,

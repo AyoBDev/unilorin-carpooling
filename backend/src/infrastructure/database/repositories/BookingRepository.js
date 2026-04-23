@@ -647,6 +647,179 @@ class BookingRepository {
       return handleDynamoDBError(error, 'DeleteBooking');
     }
   }
+  // ─── Aliases used by BookingService / RatingService / ReportingService ───
+
+  /**
+   * Find booking by ID — alias for getById
+   */
+  async findById(bookingId) {
+    return this.getById(bookingId);
+  }
+
+  /**
+   * Find bookings by passenger (user) ID
+   */
+  async findByPassenger(passengerId) {
+    const result = await this.getByUserId(passengerId);
+    return result.items || [];
+  }
+
+  /**
+   * Find bookings by driver ID
+   */
+  async findByDriver(driverId) {
+    try {
+      const params = {
+        TableName: this.tableName,
+        IndexName: GSI.GSI4,
+        KeyConditionExpression: 'GSI4PK = :status',
+        FilterExpression: 'driverId = :driverId',
+        ExpressionAttributeValues: {
+          ':status': 'STATUS#confirmed',
+          ':driverId': driverId,
+        },
+      };
+
+      // Query across multiple statuses
+      const statuses = ['pending', 'confirmed', 'in_progress', 'completed', 'cancelled'];
+      const allBookings = [];
+
+      for (const status of statuses) {
+        params.ExpressionAttributeValues[':status'] = `STATUS#${status}`;
+        const result = await docClient.send(new QueryCommand(params));
+        if (result.Items) allBookings.push(...result.Items);
+      }
+
+      return allBookings;
+    } catch (error) {
+      return handleDynamoDBError(error, 'FindByDriver');
+    }
+  }
+
+  /**
+   * Find bookings by ride ID
+   */
+  async findByRide(rideId) {
+    const result = await this.getByRideId(rideId);
+    return result.items || [];
+  }
+
+  /**
+   * Find booking by reference code
+   */
+  async findByReference(reference) {
+    try {
+      const { ScanCommand } = require('@aws-sdk/lib-dynamodb');
+      const result = await docClient.send(
+        new ScanCommand({
+          TableName: this.tableName,
+          FilterExpression: 'bookingCode = :ref AND entityType = :et',
+          ExpressionAttributeValues: {
+            ':ref': reference,
+            ':et': 'BOOKING',
+          },
+          Limit: 1,
+        }),
+      );
+      return (result.Items && result.Items[0]) || null;
+    } catch (error) {
+      return handleDynamoDBError(error, 'FindByReference');
+    }
+  }
+
+  /**
+   * Find booking by passenger and ride
+   */
+  async findByPassengerAndRide(passengerId, rideId) {
+    try {
+      const params = {
+        TableName: this.tableName,
+        IndexName: GSI.GSI2,
+        KeyConditionExpression: 'GSI2PK = :rideId AND GSI2SK = :userId',
+        ExpressionAttributeValues: {
+          ':rideId': `RIDE#${rideId}`,
+          ':userId': `BOOKING#${passengerId}`,
+        },
+        Limit: 1,
+      };
+
+      const result = await docClient.send(new QueryCommand(params));
+      return (result.Items && result.Items[0]) || null;
+    } catch (error) {
+      return handleDynamoDBError(error, 'FindByPassengerAndRide');
+    }
+  }
+
+  /**
+   * Update booking status with metadata
+   */
+  async updateStatus(bookingId, status, metadata = {}) {
+    return this.update(bookingId, { status, ...metadata });
+  }
+
+  /**
+   * Find bookings by user (passenger or driver) — alias for RatingService
+   */
+  async findByUser(userId) {
+    const [passengerBookings, driverBookings] = await Promise.all([
+      this.findByPassenger(userId),
+      this.findByDriver(userId),
+    ]);
+    return [...passengerBookings, ...driverBookings];
+  }
+
+  /**
+   * Find bookings by driver within a date range — for ReportingService
+   */
+  async findByDriverAndDateRange(driverId, startDate, endDate) {
+    const bookings = await this.findByDriver(driverId);
+    return bookings.filter((b) => {
+      const date = b.rideDate || b.createdAt;
+      return date >= startDate && date <= endDate;
+    });
+  }
+
+  /**
+   * Find bookings by passenger within a date range — for ReportingService
+   */
+  async findByPassengerAndDateRange(passengerId, startDate, endDate) {
+    const bookings = await this.findByPassenger(passengerId);
+    return bookings.filter((b) => {
+      const date = b.rideDate || b.createdAt;
+      return date >= startDate && date <= endDate;
+    });
+  }
+
+  /**
+   * Find all bookings within a date range — for ReportingService
+   */
+  async findByDateRange(startDate, endDate) {
+    try {
+      const { ScanCommand } = require('@aws-sdk/lib-dynamodb');
+      const result = await docClient.send(
+        new ScanCommand({
+          TableName: this.tableName,
+          FilterExpression:
+            'entityType = :et AND (rideDate BETWEEN :start AND :end OR createdAt BETWEEN :start AND :end)',
+          ExpressionAttributeValues: {
+            ':et': 'BOOKING',
+            ':start': startDate,
+            ':end': endDate,
+          },
+        }),
+      );
+      return result.Items || [];
+    } catch (error) {
+      return handleDynamoDBError(error, 'FindByDateRange');
+    }
+  }
+  /**
+   * Find active bookings for a user — for SafetyService
+   */
+  async findActiveByUser(userId) {
+    const bookings = await this.findByPassenger(userId);
+    return bookings.filter((b) => ['confirmed', 'in_progress'].includes(b.status));
+  }
 }
 
 module.exports = BookingRepository;

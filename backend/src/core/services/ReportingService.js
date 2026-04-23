@@ -314,6 +314,12 @@ class ReportingService {
    * @returns {Promise<Object>} Booking summary
    */
   async getBookingSummary(userId, options = {}) {
+    // Support admin calls: getBookingSummary({ startDate, endDate, groupBy })
+    if (typeof userId === 'object' && userId !== null) {
+      options = userId;
+      userId = null;
+    }
+
     const {
       period = REPORT_PERIOD.THIS_MONTH,
       role = 'passenger', // 'passenger' or 'driver'
@@ -332,7 +338,13 @@ class ReportingService {
 
     try {
       let bookings;
-      if (role === 'driver') {
+      if (!userId) {
+        // Admin platform-wide report
+        bookings = await this.bookingRepository.findByDateRange(
+          formatDate(start),
+          formatDate(end),
+        );
+      } else if (role === 'driver') {
         bookings = await this.bookingRepository.findByDriverAndDateRange(
           userId,
           formatDate(start),
@@ -428,6 +440,12 @@ class ReportingService {
    * @returns {Promise<Object>} Reconciliation report
    */
   async getCashReconciliation(driverId, options = {}) {
+    // Support admin calls: getCashReconciliation({ startDate, endDate })
+    if (typeof driverId === 'object' && driverId !== null) {
+      options = driverId;
+      driverId = null;
+    }
+
     const { period = REPORT_PERIOD.THIS_WEEK, startDate, endDate } = options;
     const { start, end } = this._getDateRange(period, startDate, endDate);
 
@@ -438,11 +456,20 @@ class ReportingService {
     });
 
     try {
-      const bookings = await this.bookingRepository.findByDriverAndDateRange(
-        driverId,
-        formatDate(start),
-        formatDate(end),
-      );
+      let bookings;
+      if (driverId) {
+        bookings = await this.bookingRepository.findByDriverAndDateRange(
+          driverId,
+          formatDate(start),
+          formatDate(end),
+        );
+      } else {
+        // Admin platform-wide reconciliation
+        bookings = await this.bookingRepository.findByDateRange(
+          formatDate(start),
+          formatDate(end),
+        );
+      }
 
       const completedBookings = bookings.filter((b) => b.status === 'completed');
 

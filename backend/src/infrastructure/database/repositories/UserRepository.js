@@ -1445,6 +1445,89 @@ class UserRepository {
       return handleDynamoDBError(error, 'FindAllUsers');
     }
   }
+  /**
+   * Get platform-wide user statistics — for ReportingService
+   */
+  async getPlatformStatistics() {
+    try {
+      const { items } = await this.findAll({});
+      const users = items || [];
+
+      return {
+        totalUsers: users.length,
+        totalDrivers: users.filter((u) => u.isDriver).length,
+        verifiedDrivers: users.filter(
+          (u) => u.isDriver && u.driverVerificationStatus === 'verified',
+        ).length,
+        activeUsers: users.filter((u) => u.isActive !== false).length,
+        suspendedUsers: users.filter((u) => u.isSuspended).length,
+      };
+    } catch (error) {
+      return handleDynamoDBError(error, 'GetPlatformStatistics');
+    }
+  }
+  // ─── Aliases for BookingService statistics ────────────────────
+
+  async incrementPassengerBookings(userId) {
+    return this.incrementRideCount(userId, 'passenger', 'completed');
+  }
+
+  async incrementPassengerCancellations(userId) {
+    return this.incrementRideCount(userId, 'passenger', 'cancelled');
+  }
+
+  async incrementLateCancellations(userId) {
+    return this._incrementCounter(userId, 'lateCancellations');
+  }
+
+  async incrementDriverCancellations(userId) {
+    return this.incrementRideCount(userId, 'driver', 'cancelled');
+  }
+
+  async incrementPassengerCompletedRides(userId) {
+    return this.incrementRideCount(userId, 'passenger', 'completed');
+  }
+
+  async incrementPassengerTotalSpent(userId, amount) {
+    return this._incrementCounter(userId, 'totalSpent', amount);
+  }
+
+  async incrementDriverEarnings(userId, amount) {
+    return this._incrementCounter(userId, 'totalEarnings', amount);
+  }
+
+  async incrementPassengerNoShows(userId) {
+    return this.incrementNoShowCount(userId);
+  }
+
+  /**
+   * Generic counter increment helper
+   * @private
+   */
+  async _incrementCounter(userId, field, amount = 1) {
+    try {
+      const keys = this._generateKeys(userId);
+
+      const params = {
+        TableName: this.tableName,
+        Key: keys,
+        UpdateExpression: `SET #field = if_not_exists(#field, :zero) + :amount, updatedAt = :updatedAt`,
+        ExpressionAttributeNames: { '#field': field },
+        ExpressionAttributeValues: {
+          ':amount': amount,
+          ':zero': 0,
+          ':updatedAt': new Date().toISOString(),
+        },
+        ReturnValues: 'ALL_NEW',
+      };
+
+      const result = await docClient.send(new UpdateCommand(params));
+      delete result.Attributes.passwordHash;
+      return result.Attributes;
+    } catch (error) {
+      return handleDynamoDBError(error, `Increment_${field}`);
+    }
+  }
 }
 
 module.exports = UserRepository;

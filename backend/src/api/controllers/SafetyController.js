@@ -199,7 +199,7 @@ class SafetyController {
       const { userId } = req.user;
       const { bookingId, location } = req.body;
 
-      await this.safetyService.updateLocation(userId, bookingId, location);
+      await this.safetyService.updateLocation(bookingId, userId, location);
 
       return success(res, 'Location updated');
     } catch (error) {

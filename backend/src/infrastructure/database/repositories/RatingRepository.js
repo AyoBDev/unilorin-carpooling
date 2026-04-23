@@ -371,6 +371,112 @@ class RatingRepository extends BaseRepository {
     return stats;
   }
 
+  // ─── Aliases used by RatingService ────────────────────────────────
+
+  /**
+   * Find rating by booking and rater
+   */
+  async findByBookingAndRater(bookingId, raterId) {
+    const params = {
+      KeyConditionExpression: 'PK = :pk AND begins_with(SK, :skPrefix)',
+      ExpressionAttributeValues: {
+        ':pk': `BOOKING#${bookingId}`,
+        ':skPrefix': 'RATING#',
+      },
+      FilterExpression: 'raterId = :raterId',
+    };
+    params.ExpressionAttributeValues[':raterId'] = raterId;
+
+    const result = await this.query(params);
+    return result.items[0] || null;
+  }
+
+  /**
+   * Find ratings given by a user — alias for getUserGivenRatings
+   */
+  async findByRater(userId) {
+    return this.getUserGivenRatings(userId);
+  }
+
+  /**
+   * Find ratings received by a user — alias for getUserReceivedRatings
+   */
+  async findByRatedUser(userId) {
+    return this.getUserReceivedRatings(userId);
+  }
+
+  /**
+   * Find all ratings for a booking
+   */
+  async findByBooking(bookingId) {
+    const params = {
+      KeyConditionExpression: 'PK = :pk AND begins_with(SK, :skPrefix)',
+      ExpressionAttributeValues: {
+        ':pk': `BOOKING#${bookingId}`,
+        ':skPrefix': 'RATING#',
+      },
+    };
+
+    const result = await this.query(params);
+    return result.items;
+  }
+
+  /**
+   * Find ratings by type — alias for getRatingsByType
+   */
+  async findByType(ratingType) {
+    const result = await this.getRatingsByType(ratingType, { limit: 100 });
+    return result.items || [];
+  }
+
+  /**
+   * Find all ratings
+   */
+  async findAll(options = {}) {
+    const params = {
+      FilterExpression: 'SK = :details',
+      ExpressionAttributeValues: {
+        ':details': 'DETAILS',
+      },
+      Limit: options.limit || 200,
+    };
+
+    const result = await this.scan(params);
+    return result.items || [];
+  }
+
+  /**
+   * Add a report for a rating
+   */
+  async addReport(report) {
+    const item = {
+      PK: report.ratingId.startsWith('RATING#') ? report.ratingId : `RATING#${report.ratingId}`,
+      SK: `REPORT#${report.reportId}`,
+      ...report,
+      EntityType: 'RatingReport',
+      createdAt: report.createdAt || new Date().toISOString(),
+    };
+
+    await super.create(item);
+    return item;
+  }
+
+  /**
+   * Update a rating
+   */
+  async update(ratingId, updates) {
+    const pk = ratingId.startsWith('RATING#') ? ratingId : `RATING#${ratingId}`;
+    return super.update(pk, 'DETAILS', updates);
+  }
+
+  /**
+   * Delete a rating
+   */
+  async delete(ratingId) {
+    const pk = ratingId.startsWith('RATING#') ? ratingId : `RATING#${ratingId}`;
+    return super.delete(pk, 'DETAILS');
+  }
+
   /**
    * Get recent reviews with comments
    * @param {Object} options - Query options

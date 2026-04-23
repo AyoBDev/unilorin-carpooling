@@ -1669,6 +1669,76 @@ class UserService {
       });
     }
   }
+  // ==================== Admin Vehicle Methods ====================
+
+  /**
+   * Admin: Get vehicles pending verification
+   */
+  async adminGetPendingVehicles(options = {}) {
+    try {
+      const vehicles = await this.vehicleRepository.getUnverifiedVehicles(options);
+      return vehicles;
+    } catch (error) {
+      logger.error('Failed to get pending vehicles', { error: error.message });
+      throw error;
+    }
+  }
+
+  /**
+   * Admin: Verify or reject a vehicle
+   */
+  async adminVerifyVehicle(userId, vehicleId, status, reason, adminId) {
+    logger.info('Admin verifying vehicle', {
+      action: 'ADMIN_VEHICLE_VERIFY',
+      adminId,
+      userId,
+      vehicleId,
+      status,
+    });
+
+    try {
+      const vehicle = await this.vehicleRepository.findById(userId, vehicleId);
+      if (!vehicle) {
+        throw new NotFoundError('Vehicle not found', ERROR_CODES.NOT_FOUND);
+      }
+
+      if (status === 'rejected' && !reason) {
+        throw new ValidationError('Reason is required when rejecting a vehicle', [
+          { field: 'reason', message: 'Rejection reason is required' },
+        ]);
+      }
+
+      if (status === 'verified') {
+        await this.vehicleRepository.verifyVehicle(userId, vehicleId, {
+          verifiedBy: adminId,
+          verifiedAt: formatDate(now()),
+        });
+      } else {
+        await this.vehicleRepository.update(userId, vehicleId, {
+          isVerified: false,
+          verificationStatus: 'rejected',
+          rejectedBy: adminId,
+          rejectedAt: formatDate(now()),
+          rejectionReason: reason,
+        });
+      }
+
+      return {
+        vehicleId,
+        userId,
+        status,
+        reason: status === 'rejected' ? reason : undefined,
+      };
+    } catch (error) {
+      logger.error('Vehicle verification failed', {
+        action: 'ADMIN_VEHICLE_VERIFY_FAILED',
+        adminId,
+        vehicleId,
+        error: error.message,
+      });
+      throw error;
+    }
+  }
 }
 
 module.exports = UserService;

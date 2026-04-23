@@ -28,6 +28,11 @@ router.put('/users/:userId', UserController.adminUpdateUser);
 router.post('/users/:userId/verify-driver', UserController.adminVerifyDriver);
 router.post('/users/:userId/suspend', UserController.adminSuspendUser);
 
+// ─── VEHICLE MANAGEMENT ───────────────────────────────────────────
+
+router.get('/vehicles/pending', UserController.adminGetPendingVehicles);
+router.post('/vehicles/:userId/:vehicleId/verify', UserController.adminVerifyVehicle);
+
 // ─── NOTIFICATIONS ─────────────────────────────────────────────
 
 router.post('/notifications/send', NotificationController.adminSendNotification);

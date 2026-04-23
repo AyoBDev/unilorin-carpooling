@@ -274,6 +274,50 @@ class NotificationRepository extends BaseRepository {
     return result.items;
   }
 
+  // ─── Aliases used by NotificationService ────────────────────────
+
+  /**
+   * Find notification by ID — scans user notifications to find by id
+   */
+  async findById(notificationId) {
+    const params = {
+      FilterExpression: 'id = :notifId',
+      ExpressionAttributeValues: {
+        ':notifId': notificationId,
+      },
+      Limit: 1,
+    };
+
+    const result = await this.scan(params);
+    return result.items[0] || null;
+  }
+
+  /**
+   * Find notifications by user — alias for getUserNotifications
+   */
+  async findByUser(userId, options = {}) {
+    const result = await this.getUserNotifications(userId, options);
+    return result.items || [];
+  }
+
+  /**
+   * Delete a notification by ID
+   */
+  async deleteById(notificationId) {
+    const notification = await this.findById(notificationId);
+    if (!notification) {
+      throw new Error('Notification not found');
+    }
+    return super.delete(notification.PK, notification.SK);
+  }
+
+  /**
+   * Count unread notifications — alias for getUnreadCount
+   */
+  async countUnread(userId) {
+    return this.getUnreadCount(userId);
+  }
+
   /**
    * Create system broadcast notification
    * @param {Object} broadcastData - Broadcast notification data

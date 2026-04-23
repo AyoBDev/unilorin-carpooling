@@ -45,6 +45,8 @@ class UserController {
     this.adminUpdateUser = this.adminUpdateUser.bind(this);
     this.adminVerifyDriver = this.adminVerifyDriver.bind(this);
     this.adminSuspendUser = this.adminSuspendUser.bind(this);
+    this.adminGetPendingVehicles = this.adminGetPendingVehicles.bind(this);
+    this.adminVerifyVehicle = this.adminVerifyVehicle.bind(this);
   }
 
   // ─── PROFILE MANAGEMENT ──────────────────────────────────────
@@ -539,6 +541,51 @@ class UserController {
       logger.info(`User ${action}`, { adminId, targetUserId: userId });
 
       return success(res, `User ${action} successfully`, { user: result });
+    } catch (error) {
+      return next(error);
+    }
+  }
+  // ─── ADMIN VEHICLE MANAGEMENT ───────────────────────────────
+
+  /**
+   * Get vehicles pending verification
+   * GET /api/v1/admin/vehicles/pending
+   */
+  async adminGetPendingVehicles(req, res, next) {
+    try {
+      const { limit = 50 } = req.query;
+
+      const vehicles = await this.userService.adminGetPendingVehicles({
+        limit: parseInt(limit, 10),
+      });
+
+      return success(res, 'Pending vehicles retrieved', { vehicles });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  /**
+   * Verify or reject a vehicle
+   * POST /api/v1/admin/vehicles/:userId/:vehicleId/verify
+   */
+  async adminVerifyVehicle(req, res, next) {
+    try {
+      const { userId, vehicleId } = req.params;
+      const adminId = req.user.userId;
+      const { status, reason } = req.body;
+
+      const result = await this.userService.adminVerifyVehicle(
+        userId,
+        vehicleId,
+        status,
+        reason,
+        adminId,
+      );
+
+      logger.info('Vehicle verification', { adminId, userId, vehicleId, status });
+
+      return success(res, `Vehicle ${status} successfully`, { vehicle: result });
     } catch (error) {
       return next(error);
     }
