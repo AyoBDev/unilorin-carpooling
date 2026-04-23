@@ -28,7 +28,7 @@ info:
 
     ## Error Handling
     All errors follow a consistent format with error codes from the `ErrorCodes` enum.
-  version: 1.3.0
+  version: 1.4.0
   contact:
     name: PSRide Team
   license:
@@ -44,7 +44,7 @@ tags:
   - name: Auth
     description: Authentication and session management
   - name: Users
-    description: User profiles, driver registration, vehicles, emergency contacts, preferences
+    description: User profiles, driver registration, vehicles, emergency contacts
   - name: Rides
     description: Ride search, creation, management, pickup points, recurring rides
   - name: Bookings
@@ -809,36 +809,6 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
-  /users/preferences:
-    get:
-      tags: [Users]
-      summary: Get user preferences
-      operationId: getPreferences
-      security:
-        - BearerAuth: []
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-    put:
-      tags: [Users]
-      summary: Update user preferences
-      operationId: updatePreferences
-      security:
-        - BearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-
   # ──────────────────────────────────────────────
   # RIDE ENDPOINTS
   # ──────────────────────────────────────────────
@@ -1143,13 +1113,105 @@ paths:
     get:
       tags: [Rides]
       summary: Get matching rides
-      description: Returns rides matching the user's saved preferences.
+      description: |
+        Finds rides that match a passenger's trip request. Uses a weighted scoring
+        algorithm (distance 30%, time 25%, price 20%, rating 15%, pickup proximity 10%)
+        and returns up to 20 results grouped by match quality (excellent, good, fair, poor).
       operationId: getMatchingRides
       security:
         - BearerAuth: []
+      parameters:
+        - name: date
+          in: query
+          required: true
+          description: Departure date (YYYY-MM-DD)
+          schema:
+            type: string
+            pattern: '^\d{4}-\d{2}-\d{2}$'
+          example: "2026-03-01"
+        - name: time
+          in: query
+          required: true
+          description: Desired departure time (HH:mm)
+          schema:
+            type: string
+            pattern: '^([01]?[0-9]|2[0-3]):[0-5][0-9]$'
+          example: "08:00"
+        - name: fromLat
+          in: query
+          required: true
+          description: Origin latitude
+          schema:
+            type: number
+            minimum: -90
+            maximum: 90
+          example: 8.4799
+        - name: fromLng
+          in: query
+          required: true
+          description: Origin longitude
+          schema:
+            type: number
+            minimum: -180
+            maximum: 180
+          example: 4.5418
+        - name: toLat
+          in: query
+          required: true
+          description: Destination latitude
+          schema:
+            type: number
+            minimum: -90
+            maximum: 90
+          example: 8.4966
+        - name: toLng
+          in: query
+          required: true
+          description: Destination longitude
+          schema:
+            type: number
+            minimum: -180
+            maximum: 180
+          example: 4.5477
+        - name: seats
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 7
+            default: 1
       responses:
         '200':
-          $ref: '#/components/responses/Success'
+          description: Matching rides grouped by quality
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          matches:
+                            type: object
+                            properties:
+                              excellent:
+                                type: array
+                                items:
+                                  $ref: '#/components/schemas/Ride'
+                              good:
+                                type: array
+                                items:
+                                  $ref: '#/components/schemas/Ride'
+                              fair:
+                                type: array
+                                items:
+                                  $ref: '#/components/schemas/Ride'
+                          totalMatches:
+                            type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
 
