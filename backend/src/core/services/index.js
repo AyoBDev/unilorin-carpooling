@@ -19,6 +19,7 @@ const SafetyService = require('./SafetyService');
 const MatchingService = require('./MatchingService');
 const ReportingService = require('./ReportingService');
 const UploadService = require('./UploadService');
+const AdminAuthService = require('./AdminAuthService');
 
 /**
  * Service instances (singletons for dependency injection)
@@ -33,6 +34,7 @@ let safetyServiceInstance = null;
 let matchingServiceInstance = null;
 let reportingServiceInstance = null;
 let uploadServiceInstance = null;
+let adminAuthServiceInstance = null;
 
 /**
  * Get AuthService instance
@@ -145,6 +147,17 @@ const getUploadService = () => {
 };
 
 /**
+ * Get AdminAuthService instance
+ * @returns {AdminAuthService}
+ */
+const getAdminAuthService = () => {
+  if (!adminAuthServiceInstance) {
+    adminAuthServiceInstance = new AdminAuthService();
+  }
+  return adminAuthServiceInstance;
+};
+
+/**
  * Reset all service instances (useful for testing)
  */
 const resetServices = () => {
@@ -158,6 +171,7 @@ const resetServices = () => {
   matchingServiceInstance = null;
   reportingServiceInstance = null;
   uploadServiceInstance = null;
+  adminAuthServiceInstance = null;
 };
 
 /**
@@ -189,6 +203,7 @@ module.exports = {
   MatchingService,
   ReportingService,
   UploadService,
+  AdminAuthService,
 
   // Singleton getters
   getAuthService,
@@ -201,6 +216,7 @@ module.exports = {
   getMatchingService,
   getReportingService,
   getUploadService,
+  getAdminAuthService,
 
   // Utilities
   resetServices,
