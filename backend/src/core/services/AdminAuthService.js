@@ -344,15 +344,26 @@ class AdminAuthService {
   _sanitizeUser(user) {
     const sanitized = { ...user };
 
+    // Remove sensitive fields
     delete sanitized.passwordHash;
     delete sanitized.verificationToken;
     delete sanitized.verificationExpiry;
+    delete sanitized.verificationTokenExpiry;
+    delete sanitized.emailVerificationToken;
     delete sanitized.passwordResetToken;
     delete sanitized.passwordResetExpiry;
     delete sanitized.loginAttempts;
     delete sanitized.lockedUntil;
     delete sanitized.refreshTokens;
+    delete sanitized.otpData;
+    delete sanitized.otp;
 
+    // Remove non-essential fields from API responses
+    delete sanitized.preferences;
+    delete sanitized.ratingsAsDriver;
+    delete sanitized.ratingsAsPassenger;
+
+    // Remove DynamoDB internal attributes
     delete sanitized.PK;
     delete sanitized.SK;
     delete sanitized.GSI1PK;
