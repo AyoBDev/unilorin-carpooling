@@ -466,7 +466,7 @@ const vehicle = {
     }),
     capacity: joi.number().integer().min(1).max(7).required(),
     vehicleType: joi.string().valid('sedan', 'suv', 'minivan', 'hatchback').required(),
-    images: joi.array().items(joi.string().uri()).max(5).default([]),
+    vehiclePhotos: joi.array().items(joi.string().max(500)).max(5).default([]),
     insuranceNumber: joi.string().max(50).trim(),
     insuranceExpiry: joi.date().iso().greater('now'),
   }),

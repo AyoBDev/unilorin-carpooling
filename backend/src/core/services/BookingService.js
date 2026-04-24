@@ -179,11 +179,22 @@ class BookingService {
         updatedAt: formatDate(now()),
       };
 
-      // Save booking
-      const createdBooking = await this.bookingRepository.create(booking);
-
-      // Update ride available seats
+      // Reserve seats first (atomic, fails if insufficient)
       await this.rideRepository.updateSeats(rideId, -seats);
+
+      // Save booking (seats already reserved)
+      let createdBooking;
+      try {
+        createdBooking = await this.bookingRepository.create(booking);
+      } catch (bookingError) {
+        // Rollback seat reservation if booking creation fails
+        await this.rideRepository.updateSeats(rideId, seats).catch((rollbackErr) => {
+          logger.error('Failed to rollback seat reservation', {
+            rideId, seats, error: rollbackErr.message,
+          });
+        });
+        throw bookingError;
+      }
 
       // Update passenger statistics
       await this.userRepository.incrementPassengerBookings(passengerId);

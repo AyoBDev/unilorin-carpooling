@@ -38,8 +38,19 @@
 
 const { SESClient, SendEmailCommand } = require('@aws-sdk/client-ses');
 const { SNSClient, PublishCommand } = require('@aws-sdk/client-sns');
+const webpush = require('web-push');
 const { logger } = require('../../shared/utils/logger');
 const { withMiddleware } = require('../middleware/lambdaMiddleware');
+
+// ─── Web Push Configuration ─────────────────────────────
+
+if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(
+    process.env.VAPID_MAILTO || 'mailto:admin@psride.ng',
+    process.env.VAPID_PUBLIC_KEY,
+    process.env.VAPID_PRIVATE_KEY,
+  );
+}
 
 // ─── AWS Clients (reused across invocations) ────────────
 
@@ -198,17 +209,34 @@ const deliverSms = async (recipient, payload) => {
 };
 
 /**
- * Send push notification.
- * Placeholder — integrate with Firebase Cloud Messaging (FCM)
- * or Web Push when the frontend supports it.
+ * Send push notification via Web Push.
  */
 const deliverPush = async (recipient, payload) => {
-  // TODO: Integrate with FCM or Web Push API
-  logger.info('Push notification queued (not yet implemented)', {
-    userId: recipient.userId,
-    title: payload.data?.title,
+  const subscription = recipient.pushSubscription;
+  if (!subscription || !subscription.endpoint) {
+    logger.warn('No push subscription for user', { userId: recipient.userId });
+    return { status: 'skipped', reason: 'no_subscription' };
+  }
+
+  if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
+    logger.warn('VAPID keys not configured, skipping push');
+    return { status: 'skipped', reason: 'no_vapid_keys' };
+  }
+
+  const pushPayload = JSON.stringify({
+    title: payload.data?.title || payload.subject || 'PSRide',
+    body: payload.data?.message || payload.body || '',
+    icon: '/icons/icon-192.png',
+    badge: '/icons/badge-72.png',
+    data: payload.data || {},
   });
-  return { status: 'queued' };
+
+  const result = await webpush.sendNotification(subscription, pushPayload);
+  logger.info('Push notification sent', {
+    userId: recipient.userId,
+    statusCode: result.statusCode,
+  });
+  return { status: 'sent', statusCode: result.statusCode };
 };
 
 // ─── Delivery Router ────────────────────────────────────

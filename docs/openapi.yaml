@@ -31,7 +31,40 @@ info:
 
     ## Error Handling
     All errors follow a consistent format with error codes from the `ErrorCodes` enum.
-  version: 1.5.0
+
+    ## Push Notifications
+    PSRide uses the Web Push protocol with VAPID keys for browser push notifications.
+
+    **Frontend integration:**
+    1. Get the VAPID public key via `GET /notifications/push/vapid-key`
+    2. Register a service worker and subscribe to push using the VAPID key
+    3. Send the subscription object to `POST /notifications/push/subscribe`
+    4. To unsubscribe, call `POST /notifications/push/unsubscribe`
+
+    Notifications are delivered via SQS → Lambda for email, SMS, and push channels.
+    In-app notifications are stored in DynamoDB and retrievable via the notifications endpoints.
+
+    ## Route Calculation (Mapbox)
+    Ride routes are calculated using the Mapbox Directions API when `MAPBOX_ACCESS_TOKEN` is configured.
+    The API returns distance (km), duration (minutes), and a polyline6-encoded geometry for map rendering.
+    Pickup point waypoints are included in the route calculation for accurate estimates.
+
+    When the Mapbox token is missing or the API call fails, the system falls back to Haversine
+    great-circle distance estimation (no polyline, approximate duration at 3 min/km).
+
+    ## Booking Concurrency
+    Seat reservation uses DynamoDB atomic conditional updates to prevent overbooking.
+    The `availableSeats` field is decremented atomically with a condition expression
+    (`availableSeats >= requestedSeats`) before the booking record is created.
+    If booking creation fails after seat reservation, seats are automatically rolled back.
+
+    ## File Uploads
+    All file uploads (profile photos, driver documents, vehicle photos) use S3 presigned URLs:
+    1. `POST /uploads/presign` — get a presigned PUT URL (valid 15 minutes)
+    2. `PUT` the file directly to S3 using the returned URL
+    3. `POST /uploads/confirm` — verify the upload succeeded
+    4. Pass the S3 `key` to the relevant create/update endpoint
+  version: 1.6.0
   contact:
     name: PSRide Team
   license:
@@ -677,7 +710,15 @@ paths:
     post:
       tags: [Users]
       summary: Add a vehicle
-      description: Requires verified email.
+      description: |
+        Add a vehicle to the authenticated driver's profile. Requires a verified email
+        and driver registration.
+
+        ## Vehicle Photos
+        To attach photos, first upload each image via `POST /uploads/presign`
+        with `category: "vehicle-photo"`, then PUT the file to the returned `uploadUrl`.
+        Optionally confirm each upload via `POST /uploads/confirm`.
+        Pass the returned S3 `key` values in the `vehiclePhotos` array (up to 5).
       operationId: addVehicle
       security:
         - BearerAuth: []
@@ -4510,13 +4551,12 @@ components:
         insuranceExpiry:
           type: string
           format: date
-        images:
+        vehiclePhotos:
           type: array
           items:
             type: string
-            format: uri
           maxItems: 5
-          description: Vehicle photo URLs (up to 5)
+          description: S3 keys of vehicle photos (upload via presigned URL first)
 
     UpdateVehicleRequest:
       type: object
