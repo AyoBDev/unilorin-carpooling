@@ -8,6 +8,9 @@ info:
     Most endpoints require a Bearer JWT token obtained via `/auth/login` or `/auth/register`.
     Include it in the `Authorization` header: `Bearer <token>`.
 
+    Admin users have a separate auth flow via `/auth/admin/login` and `/auth/admin/register`.
+    Admin registration requires a master secret or an invite code from an existing admin.
+
     Tokens expire based on `JWT_EXPIRY` config. Use `/auth/refresh-token` with a refresh token to get a new access token.
 
     ## Rate Limiting
@@ -28,7 +31,7 @@ info:
 
     ## Error Handling
     All errors follow a consistent format with error codes from the `ErrorCodes` enum.
-  version: 1.3.0
+  version: 1.5.0
   contact:
     name: PSRide Team
   license:
@@ -44,7 +47,7 @@ tags:
   - name: Auth
     description: Authentication and session management
   - name: Users
-    description: User profiles, driver registration, vehicles, emergency contacts, preferences
+    description: User profiles, driver registration, vehicles, emergency contacts
   - name: Rides
     description: Ride search, creation, management, pickup points, recurring rides
   - name: Bookings
@@ -59,6 +62,8 @@ tags:
     description: Driver-facing cash, earnings, and summary reports
   - name: Uploads
     description: Image uploads via S3 presigned URLs (profile photos, driver documents, vehicle photos)
+  - name: Admin Auth
+    description: Admin authentication (separate from user auth) and invite code management
   - name: Admin
     description: Admin user management, driver verification, platform analytics
 
@@ -809,36 +814,6 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
-  /users/preferences:
-    get:
-      tags: [Users]
-      summary: Get user preferences
-      operationId: getPreferences
-      security:
-        - BearerAuth: []
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-    put:
-      tags: [Users]
-      summary: Update user preferences
-      operationId: updatePreferences
-      security:
-        - BearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-
   # ──────────────────────────────────────────────
   # RIDE ENDPOINTS
   # ──────────────────────────────────────────────
@@ -1143,13 +1118,105 @@ paths:
     get:
       tags: [Rides]
       summary: Get matching rides
-      description: Returns rides matching the user's saved preferences.
+      description: |
+        Finds rides that match a passenger's trip request. Uses a weighted scoring
+        algorithm (distance 30%, time 25%, price 20%, rating 15%, pickup proximity 10%)
+        and returns up to 20 results grouped by match quality (excellent, good, fair, poor).
       operationId: getMatchingRides
       security:
         - BearerAuth: []
+      parameters:
+        - name: date
+          in: query
+          required: true
+          description: Departure date (YYYY-MM-DD)
+          schema:
+            type: string
+            pattern: '^\d{4}-\d{2}-\d{2}$'
+          example: "2026-03-01"
+        - name: time
+          in: query
+          required: true
+          description: Desired departure time (HH:mm)
+          schema:
+            type: string
+            pattern: '^([01]?[0-9]|2[0-3]):[0-5][0-9]$'
+          example: "08:00"
+        - name: fromLat
+          in: query
+          required: true
+          description: Origin latitude
+          schema:
+            type: number
+            minimum: -90
+            maximum: 90
+          example: 8.4799
+        - name: fromLng
+          in: query
+          required: true
+          description: Origin longitude
+          schema:
+            type: number
+            minimum: -180
+            maximum: 180
+          example: 4.5418
+        - name: toLat
+          in: query
+          required: true
+          description: Destination latitude
+          schema:
+            type: number
+            minimum: -90
+            maximum: 90
+          example: 8.4966
+        - name: toLng
+          in: query
+          required: true
+          description: Destination longitude
+          schema:
+            type: number
+            minimum: -180
+            maximum: 180
+          example: 4.5477
+        - name: seats
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 7
+            default: 1
       responses:
         '200':
-          $ref: '#/components/responses/Success'
+          description: Matching rides grouped by quality
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          matches:
+                            type: object
+                            properties:
+                              excellent:
+                                type: array
+                                items:
+                                  $ref: '#/components/schemas/Ride'
+                              good:
+                                type: array
+                                items:
+                                  $ref: '#/components/schemas/Ride'
+                              fair:
+                                type: array
+                                items:
+                                  $ref: '#/components/schemas/Ride'
+                          totalMatches:
+                            type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -2547,6 +2614,132 @@ paths:
           $ref: '#/components/responses/Forbidden'
 
   # ──────────────────────────────────────────────
+  # ADMIN AUTH ENDPOINTS
+  # ──────────────────────────────────────────────
+  /auth/admin/login:
+    post:
+      tags: [Admin Auth]
+      summary: Admin login
+      description: |
+        Dedicated login endpoint for admin accounts. Rejects non-admin users with a generic
+        "Invalid credentials" error to prevent role enumeration.
+        Rate limited to 5 attempts per 15 minutes.
+      operationId: adminLogin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              email: admin@psride.com
+              password: SecureAdmin123
+      responses:
+        '200':
+          description: Admin login successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          user:
+                            $ref: '#/components/schemas/User'
+                          accessToken:
+                            type: string
+                          refreshToken:
+                            type: string
+                          expiresIn:
+                            type: string
+                            example: "24h"
+                          tokenType:
+                            type: string
+                            example: Bearer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /auth/admin/register:
+    post:
+      tags: [Admin Auth]
+      summary: Register a new admin
+      description: |
+        Creates a new admin account. Requires either:
+        - `adminSecret` — matches the `ADMIN_REGISTRATION_SECRET` env var (for bootstrapping the first admin)
+        - `inviteCode` — a one-time code generated by an existing admin
+
+        Admin accounts are created pre-verified (no email verification required).
+        Rate limited to 3 attempts per hour.
+      operationId: adminRegister
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminRegisterRequest'
+            examples:
+              withSecret:
+                summary: Register with master secret
+                value:
+                  email: admin@psride.com
+                  password: SecureAdmin123
+                  confirmPassword: SecureAdmin123
+                  firstName: Admin
+                  lastName: User
+                  phone: "08012345678"
+                  adminSecret: "your-admin-secret"
+              withInvite:
+                summary: Register with invite code
+                value:
+                  email: admin2@psride.com
+                  password: SecureAdmin456
+                  confirmPassword: SecureAdmin456
+                  firstName: Another
+                  lastName: Admin
+                  phone: "08098765432"
+                  inviteCode: "a1b2c3d4e5f6..."
+      responses:
+        '201':
+          description: Admin registered successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          user:
+                            $ref: '#/components/schemas/User'
+                          accessToken:
+                            type: string
+                          refreshToken:
+                            type: string
+                          expiresIn:
+                            type: string
+                            example: "24h"
+                          tokenType:
+                            type: string
+                            example: Bearer
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  # ──────────────────────────────────────────────
   # ADMIN ENDPOINTS
   # ──────────────────────────────────────────────
   /admin/users:
@@ -2964,6 +3157,111 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+
+  # ── INVITE MANAGEMENT ──────────────────────────
+  /admin/invites:
+    post:
+      tags: [Admin Auth]
+      summary: Create an admin invite code
+      description: |
+        Generates a single-use invite code for registering a new admin.
+        The raw code is returned only once in the response — it cannot be retrieved later.
+        Optionally restrict the invite to a specific email address.
+        Default expiry is 72 hours (max 168 hours / 7 days).
+      operationId: createAdminInvite
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminInviteRequest'
+            examples:
+              unrestricted:
+                summary: Invite any email
+                value:
+                  expiresInHours: 72
+              restricted:
+                summary: Invite specific email
+                value:
+                  email: newadmin@psride.com
+                  expiresInHours: 48
+      responses:
+        '201':
+          description: Invite created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          invite:
+                            $ref: '#/components/schemas/AdminInvite'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    get:
+      tags: [Admin Auth]
+      summary: List admin invite codes
+      description: Returns all invite codes with their current status (active, used, expired, revoked).
+      operationId: listAdminInvites
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Invites retrieved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          invites:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/AdminInviteSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/invites/{inviteId}:
+    delete:
+      tags: [Admin Auth]
+      summary: Revoke an admin invite code
+      description: Revokes an active invite code. Already used or expired invites cannot be revoked.
+      operationId: revokeAdminInvite
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: inviteId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   # ──────────────────────────────────────────────
   # HEALTH CHECK
@@ -3877,6 +4175,100 @@ components:
           format: email
         password:
           type: string
+
+    AdminRegisterRequest:
+      type: object
+      required: [email, password, confirmPassword, firstName, lastName, phone]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+        confirmPassword:
+          type: string
+          description: Must match password
+        firstName:
+          type: string
+          minLength: 2
+          maxLength: 50
+        lastName:
+          type: string
+          minLength: 2
+          maxLength: 50
+        phone:
+          type: string
+          description: Nigerian phone number (e.g., 08012345678 or +2348012345678)
+        adminSecret:
+          type: string
+          description: Master secret from ADMIN_REGISTRATION_SECRET env var. Mutually exclusive with inviteCode.
+        inviteCode:
+          type: string
+          description: One-time invite code from an existing admin. Mutually exclusive with adminSecret.
+      description: Exactly one of adminSecret or inviteCode is required.
+
+    AdminInviteRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          description: If set, only this email can use the invite code.
+        expiresInHours:
+          type: integer
+          minimum: 1
+          maximum: 168
+          default: 72
+          description: Hours until the invite expires (default 72, max 168).
+
+    AdminInvite:
+      type: object
+      properties:
+        inviteId:
+          type: string
+          format: uuid
+        code:
+          type: string
+          description: The raw invite code. Shown only once at creation — cannot be retrieved later.
+        email:
+          type: string
+          format: email
+          nullable: true
+        expiresAt:
+          type: string
+          format: date-time
+
+    AdminInviteSummary:
+      type: object
+      properties:
+        inviteId:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+          nullable: true
+        status:
+          type: string
+          enum: [active, used, expired, revoked]
+        createdBy:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        usedBy:
+          type: string
+          format: uuid
+          nullable: true
+        usedAt:
+          type: string
+          format: date-time
+          nullable: true
 
     EmailRequest:
       type: object
