@@ -363,6 +363,11 @@ class AdminAuthService {
     delete sanitized.ratingsAsDriver;
     delete sanitized.ratingsAsPassenger;
 
+    // Default profile image
+    if (!sanitized.profileImage && !sanitized.profilePhoto) {
+      sanitized.profileImage = 'defaults/default-avatar.svg';
+    }
+
     // Remove DynamoDB internal attributes
     delete sanitized.PK;
     delete sanitized.SK;

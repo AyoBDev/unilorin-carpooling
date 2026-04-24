@@ -1398,7 +1398,7 @@ class RideService {
       );
     }
 
-    if (!driver.isVerified) {
+    if (!driver.isVerified && !driver.emailVerified) {
       throw new ForbiddenError(
         'Email must be verified to create rides',
         ERROR_CODES.USER_NOT_VERIFIED,
@@ -1435,7 +1435,7 @@ class RideService {
       }
     }
 
-    if (vehicle.verificationStatus !== 'approved') {
+    if (!vehicle.isVerified && vehicle.verificationStatus !== 'approved') {
       throw new ForbiddenError(
         'Vehicle verification is pending or rejected',
         ERROR_CODES.VEHICLE_NOT_VERIFIED,

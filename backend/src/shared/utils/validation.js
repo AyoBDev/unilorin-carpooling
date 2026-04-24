@@ -466,6 +466,7 @@ const vehicle = {
     }),
     capacity: joi.number().integer().min(1).max(7).required(),
     vehicleType: joi.string().valid('sedan', 'suv', 'minivan', 'hatchback').required(),
+    images: joi.array().items(joi.string().uri()).max(5).default([]),
     insuranceNumber: joi.string().max(50).trim(),
     insuranceExpiry: joi.date().iso().greater('now'),
   }),
@@ -484,12 +485,11 @@ const vehicle = {
  */
 const admin = {
   verifyDriver: joi.object({
-    userId: joi.string().uuid({ version: 'uuidv4' }).required(),
-    approved: joi.boolean().required(),
-    rejectionReason: joi.when('approved', {
-      is: false,
+    status: joi.string().valid('verified', 'rejected').required(),
+    reason: joi.when('status', {
+      is: 'rejected',
       then: joi.string().max(500).required(),
-      otherwise: joi.forbidden(),
+      otherwise: joi.string().max(500).optional(),
     }),
   }),
 

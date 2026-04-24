@@ -175,7 +175,7 @@ const authenticate = async (req, res, next) => {
       firstName: user.firstName,
       lastName: user.lastName,
       phone: user.phone,
-      driverStatus: user.driverStatus || null,
+      driverStatus: user.driverVerificationStatus || user.driverStatus || null,
     };
 
     // 6. Attach token info for downstream use

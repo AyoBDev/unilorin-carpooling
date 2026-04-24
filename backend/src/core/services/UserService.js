@@ -1462,6 +1462,7 @@ class UserService {
 
       const updateData = {
         driverVerificationStatus: status,
+        driverVerified: status === DRIVER_STATUS.VERIFIED,
         driverVerifiedAt: formatDate(now()),
         driverVerifiedBy: adminId,
         updatedAt: formatDate(now()),
@@ -1469,6 +1470,7 @@ class UserService {
 
       if (status === DRIVER_STATUS.REJECTED) {
         updateData.driverRejectionReason = reason;
+        updateData.driverVerified = false;
       }
 
       const updatedUser = await this.userRepository.updateProfile(userId, updateData);
