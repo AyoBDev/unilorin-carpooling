@@ -29,6 +29,8 @@ const AUTH_CONFIG = {
     { method: 'POST', path: '/api/v1/auth/verify-email' },
     { method: 'GET', path: '/api/v1/health' },
     { method: 'GET', path: '/api/v1/status' },
+    { method: 'POST', path: '/api/v1/auth/admin/login' },
+    { method: 'POST', path: '/api/v1/auth/admin/register' },
   ],
 };
 

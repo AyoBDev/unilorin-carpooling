@@ -302,6 +302,24 @@ const searchLimiter = rateLimiter({
   message: 'Too many search requests. Please try again shortly.',
 });
 
+/** Admin login limiter – 5 attempts / 15 min (stricter) */
+const adminLoginLimiter = rateLimiter({
+  maxRequests: 5,
+  windowMs: 15 * 60 * 1000,
+  prefix: 'admin-login',
+  message: 'Too many admin login attempts. Please try again in 15 minutes.',
+  skipRoles: [], // Do NOT skip for admin role — this is pre-auth
+});
+
+/** Admin registration limiter – 3 attempts / hour */
+const adminRegisterLimiter = rateLimiter({
+  maxRequests: 3,
+  windowMs: 60 * 60 * 1000,
+  prefix: 'admin-register',
+  message: 'Too many admin registration attempts. Please try again later.',
+  skipRoles: [], // Do NOT skip for admin role — this is pre-auth
+});
+
 // ─────────────────────────────────────────────
 // Exports
 // ─────────────────────────────────────────────
@@ -319,6 +337,8 @@ module.exports = {
   bookingLimiter,
   sosLimiter,
   searchLimiter,
+  adminLoginLimiter,
+  adminRegisterLimiter,
 
   // Internals (for testing / advanced use)
   MemoryStore,
