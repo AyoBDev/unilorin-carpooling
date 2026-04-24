@@ -653,6 +653,33 @@ const viewUploadSchema = joi.object({
   key: joi.string().max(500).required(),
 });
 
+// Admin auth schemas
+const adminLoginSchema = joi.object({
+  email: components.email.required(),
+  password: joi.string().required(),
+});
+
+const adminRegisterSchema = joi.object({
+  email: components.email.required(),
+  password: components.password.required(),
+  confirmPassword: joi.string().valid(joi.ref('password')).required().messages({
+    'any.only': 'Passwords must match',
+  }),
+  firstName: joi.string().min(2).max(50).trim().required(),
+  lastName: joi.string().min(2).max(50).trim().required(),
+  phone: customValidators.nigerianPhone.required(),
+  adminSecret: joi.string().optional(),
+  inviteCode: joi.string().optional(),
+}).xor('adminSecret', 'inviteCode').messages({
+  'object.xor': 'Provide either adminSecret or inviteCode, not both',
+  'object.missing': 'Either adminSecret or inviteCode is required',
+});
+
+const adminInviteSchema = joi.object({
+  email: components.email.optional(),
+  expiresInHours: joi.number().integer().min(1).max(168).default(72),
+});
+
 module.exports = {
   joi,
   patterns,
@@ -700,5 +727,9 @@ module.exports = {
   presignUploadSchema,
   confirmUploadSchema,
   viewUploadSchema,
+  // Admin auth schemas
+  adminLoginSchema,
+  adminRegisterSchema,
+  adminInviteSchema,
   ...helpers,
 };
