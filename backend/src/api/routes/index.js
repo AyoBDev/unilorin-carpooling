@@ -39,8 +39,8 @@ router.get('/health', (req, res) => {
 
 // ─── API ROUTES ────────────────────────────────────────────────
 
-router.use('/auth', authRoutes);
 router.use('/auth/admin', adminAuthRoutes);
+router.use('/auth', authRoutes);
 router.use('/users', userRoutes);
 router.use('/rides', rideRoutes);
 router.use('/bookings', bookingRoutes);
