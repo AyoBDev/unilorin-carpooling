@@ -20,6 +20,7 @@ const notificationRoutes = require('./notification.routes');
 const safetyRoutes = require('./safety.routes');
 const reportRoutes = require('./report.routes');
 const adminRoutes = require('./admin.routes');
+const adminAuthRoutes = require('./adminAuth.routes');
 const uploadRoutes = require('./upload.routes');
 
 const router = Router();
@@ -39,6 +40,7 @@ router.get('/health', (req, res) => {
 // ─── API ROUTES ────────────────────────────────────────────────
 
 router.use('/auth', authRoutes);
+router.use('/auth/admin', adminAuthRoutes);
 router.use('/users', userRoutes);
 router.use('/rides', rideRoutes);
 router.use('/bookings', bookingRoutes);

@@ -11,8 +11,11 @@ const {
   NotificationController,
   SafetyController,
   ReportController,
+  AdminAuthController,
 } = require('../controllers');
 const { authenticate, requireAdmin } = require('../middlewares/auth.middleware');
+const { validateBody } = require('../middlewares/validation.middleware');
+const { adminInviteSchema } = require('../../shared/utils/validation');
 
 const router = Router();
 
@@ -54,5 +57,10 @@ router.get('/reports/driver-leaderboard', ReportController.getDriverLeaderboard)
 router.get('/reports/user-growth', ReportController.getUserGrowth);
 router.get('/reports/rides', ReportController.getRideAnalytics);
 router.get('/reports/revenue', ReportController.getRevenueReport);
+
+// ─── INVITE MANAGEMENT ───────────────────────────────────────
+router.post('/invites', validateBody(adminInviteSchema), AdminAuthController.createInvite);
+router.get('/invites', AdminAuthController.listInvites);
+router.delete('/invites/:inviteId', AdminAuthController.revokeInvite);
 
 module.exports = router;
