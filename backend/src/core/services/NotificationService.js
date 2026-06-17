@@ -523,55 +523,6 @@ class NotificationService {
     return { messageId: `sms_disabled_${randomUUID()}`, status: 'disabled' };
   }
 
-  // Legacy method body (disabled)
-  async _sendSMS_DISABLED(phone, message, userId = null) {
-    logger.info('Sending SMS', {
-      action: NOTIFICATION_EVENTS.SMS_SENT,
-      phone: `${phone.substring(0, 8)}****`,
-      userId,
-    });
-
-    try {
-      // In production, integrate with AWS SNS or African SMS gateway
-      // For now, we'll simulate the SMS send
-      const smsResult = await this._sendSMSViaProvider(phone, message);
-
-      // Log the notification
-      if (userId) {
-        await this._logNotification(userId, {
-          type: NOTIFICATION_TYPE.SMS,
-          phone,
-          message,
-          status: 'sent',
-          provider: 'aws_sns',
-          providerMessageId: smsResult.messageId,
-        });
-      }
-
-      return {
-        success: true,
-        messageId: smsResult.messageId,
-      };
-    } catch (error) {
-      logger.error('SMS send failed', {
-        action: 'SMS_SEND_FAILED',
-        phone: `${phone.substring(0, 8)}****`,
-        error: error.message,
-      });
-
-      if (userId) {
-        await this._logNotification(userId, {
-          type: NOTIFICATION_TYPE.SMS,
-          phone,
-          message,
-          status: 'failed',
-          error: error.message,
-        });
-      }
-
-      throw error;
-    }
-  }
 
   /**
    * Send verification code via SMS
