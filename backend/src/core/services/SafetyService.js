@@ -459,15 +459,16 @@ class SafetyService {
 
       // Send share notifications
       const shareUrl = `${process.env.APP_URL}/track/${sessionId}`;
-      await Promise.all(
-        validContacts.map((contact) =>
-          this.notificationService.sendSMS(
-            contact.phone,
-            `${user.firstName} is sharing their ride location with you. Track here: ${shareUrl}`,
-            userId,
-          ),
-        ),
-      );
+      // SMS disabled - will be replaced with email in Task 6/7
+      // await Promise.all(
+      //   validContacts.map((contact) =>
+      //     this.notificationService.sendSMS(
+      //       contact.phone,
+      //       `${user.firstName} is sharing their ride location with you. Track here: ${shareUrl}`,
+      //       userId,
+      //     ),
+      //   ),
+      // );
 
       return {
         message: 'Tracking shared with emergency contacts',
@@ -583,13 +584,7 @@ class SafetyService {
         });
       }
 
-      if (!user.phoneVerified) {
-        safetyStatus.recommendations.push({
-          type: 'phone_verification',
-          message: 'Verify your phone number for SMS alerts',
-          action: 'verify_phone',
-        });
-      }
+      // Phone verification removed - SMS channel disabled
 
       return safetyStatus;
     } catch (error) {

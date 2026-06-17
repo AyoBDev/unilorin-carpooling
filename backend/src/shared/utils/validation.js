@@ -182,7 +182,7 @@ const auth = {
     }),
     firstName: joi.string().min(2).max(50).trim().required(),
     lastName: joi.string().min(2).max(50).trim().required(),
-    phone: customValidators.nigerianPhone.required(),
+    phone: customValidators.nigerianPhone.optional().allow('', null),
     role: joi.string().valid('student', 'staff').required(),
     matricNumber: joi.when('role', {
       is: 'student',

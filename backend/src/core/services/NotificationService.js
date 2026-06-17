@@ -518,6 +518,13 @@ class NotificationService {
    * @returns {Promise<Object>} Send result
    */
   async sendSMS(phone, message, userId = null) {
+    const { randomUUID } = require('crypto');
+    logger.debug('SMS channel disabled', { phone: phone ? `${phone.substring(0, 8)}***` : 'none' });
+    return { messageId: `sms_disabled_${randomUUID()}`, status: 'disabled' };
+  }
+
+  // Legacy method body (disabled)
+  async _sendSMS_DISABLED(phone, message, userId = null) {
     logger.info('Sending SMS', {
       action: NOTIFICATION_EVENTS.SMS_SENT,
       phone: `${phone.substring(0, 8)}****`,
