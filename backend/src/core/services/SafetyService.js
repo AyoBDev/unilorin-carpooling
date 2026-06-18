@@ -12,6 +12,7 @@ const { randomUUID } = require('crypto');
 const UserRepository = require('../../infrastructure/database/repositories/UserRepository');
 const BookingRepository = require('../../infrastructure/database/repositories/BookingRepository');
 const RideRepository = require('../../infrastructure/database/repositories/RideRepository');
+const SafetyRepository = require('../../infrastructure/database/repositories/SafetyRepository');
 const NotificationService = require('./NotificationService');
 const { logger } = require('../../shared/utils/logger');
 const { formatDate, now, addMinutes, formatDateTime } = require('../../shared/utils/dateTime');
@@ -66,12 +67,8 @@ class SafetyService {
     this.bookingRepository = new BookingRepository();
     this.rideRepository = new RideRepository();
     this.notificationService = new NotificationService();
+    this.safetyRepository = new SafetyRepository();
     this.serviceName = 'SafetyService';
-
-    // In-memory store for active tracking sessions
-    // In production, this would be Redis or similar
-    this.trackingSessions = new Map();
-    this.activeAlerts = new Map();
   }
 
   // ==================== SOS Functionality ====================
@@ -135,11 +132,8 @@ class SafetyService {
         notificationsSent: [],
       };
 
-      // Store alert
-      this.activeAlerts.set(alertId, sosAlert);
-
-      // Also persist to database
-      await this._persistAlert(sosAlert);
+      // Store alert in DynamoDB
+      await this.safetyRepository.createAlert(sosAlert);
 
       // Send notifications to emergency contacts
       const notificationResults = await this.notificationService.sendSOSAlert({
@@ -211,7 +205,7 @@ class SafetyService {
     });
 
     try {
-      const alert = this.activeAlerts.get(alertId);
+      const alert = await this.safetyRepository.getAlert(alertId, userId);
       if (!alert) {
         throw new NotFoundError('Alert not found', ERROR_CODES.ALERT_NOT_FOUND);
       }
@@ -227,16 +221,19 @@ class SafetyService {
       const { isFalseAlarm = false, notes = '' } = resolution;
 
       // Update alert
-      alert.status = isFalseAlarm ? ALERT_STATUS.FALSE_ALARM : ALERT_STATUS.RESOLVED;
+      const newStatus = isFalseAlarm ? ALERT_STATUS.FALSE_ALARM : ALERT_STATUS.RESOLVED;
+      await this.safetyRepository.updateAlert(alertId, userId, {
+        status: newStatus,
+        resolvedAt: formatDate(now()),
+        resolutionNotes: notes,
+        resolvedBy: userId,
+      });
+
+      // Update alert object for notification
+      alert.status = newStatus;
       alert.resolvedAt = formatDate(now());
       alert.resolutionNotes = notes;
       alert.resolvedBy = userId;
-
-      // Update in store
-      this.activeAlerts.set(alertId, alert);
-
-      // Persist update
-      await this._updateAlert(alertId, alert);
 
       // Notify emergency contacts that alert is resolved
       const user = await this.userRepository.findById(userId);
@@ -269,11 +266,7 @@ class SafetyService {
    * @returns {Promise<Array>} Active alerts
    */
   async getActiveAlerts(userId) {
-    const alerts = Array.from(this.activeAlerts.values()).filter(
-      (alert) => alert.userId === userId && alert.status === ALERT_STATUS.ACTIVE,
-    );
-
-    return alerts;
+    return this.safetyRepository.getAlertsByUser(userId, { status: ALERT_STATUS.ACTIVE });
   }
 
   // ==================== Live Tracking ====================
@@ -306,18 +299,23 @@ class SafetyService {
         throw new ForbiddenError('Not authorized to track this ride', ERROR_CODES.FORBIDDEN);
       }
 
+      // Get user's booking for this ride to have bookingId
+      const userBooking = bookings.find((b) => b.passengerId === userId || b.driverId === userId);
+      const bookingId = userBooking ? userBooking.bookingId : bookings[0]?.bookingId;
+
       const sessionId = randomUUID();
       const session = {
         sessionId,
         rideId,
         userId,
+        bookingId,
         startedAt: formatDate(now()),
         status: 'active',
         locations: [],
         sharedWith: [], // Users who can view this tracking
       };
 
-      this.trackingSessions.set(sessionId, session);
+      await this.safetyRepository.createTrackingSession(session);
 
       return {
         sessionId,
@@ -336,46 +334,43 @@ class SafetyService {
   }
 
   /**
-   * Update location for tracking session
-   * @param {string} sessionId - Session ID
+   * Update location for a booking's active location share
    * @param {string} userId - User updating
+   * @param {string} bookingId - Booking ID
    * @param {Object} location - Location data
    * @returns {Promise<Object>} Update result
    */
-  async updateLocation(sessionId, userId, location) {
+  async updateLocation(userId, bookingId, location) {
     try {
-      const session = this.trackingSessions.get(sessionId);
-      if (!session) {
-        throw new NotFoundError('Tracking session not found', ERROR_CODES.SESSION_NOT_FOUND);
-      }
+      // Find the active location share for this user and booking
+      const params = {
+        IndexName: 'GSI1',
+        KeyConditionExpression: 'GSI1PK = :gsi1pk',
+        ExpressionAttributeValues: {
+          ':gsi1pk': `USER#${userId}`,
+        },
+      };
 
-      if (session.userId !== userId) {
-        throw new ForbiddenError('Not authorized to update this session', ERROR_CODES.FORBIDDEN);
+      const { items } = await this.safetyRepository.query(params);
+      const activeShare = items.find(
+        (s) => s.bookingId === bookingId && s.status === 'active',
+      );
+
+      if (!activeShare) {
+        throw new NotFoundError('No active location sharing session found', ERROR_CODES.SESSION_NOT_FOUND);
       }
 
       const locationUpdate = {
-        latitude: location.latitude,
-        longitude: location.longitude,
+        latitude: location.latitude || location.lat,
+        longitude: location.longitude || location.lng,
         accuracy: location.accuracy,
-        speed: location.speed,
-        heading: location.heading,
         timestamp: formatDate(now()),
       };
 
-      // Add to location history
-      session.locations.push(locationUpdate);
-      session.lastLocation = locationUpdate;
-      session.lastUpdateAt = formatDate(now());
-
-      // Keep only last 100 locations in memory
-      if (session.locations.length > 100) {
-        session.locations = session.locations.slice(-100);
-      }
-
-      // Check for safety alerts
-      await this._checkLocationSafety(session, locationUpdate);
-
-      this.trackingSessions.set(sessionId, session);
+      await this.safetyRepository.updateLocationShare(activeShare.shareToken, {
+        lastLocation: locationUpdate,
+        lastUpdateAt: formatDate(now()),
+      });
 
       return {
         success: true,
@@ -384,7 +379,8 @@ class SafetyService {
     } catch (error) {
       logger.error('Location update failed', {
         action: 'LOCATION_UPDATE_FAILED',
-        sessionId,
+        userId,
+        bookingId,
         error: error.message,
       });
       throw error;
@@ -398,7 +394,7 @@ class SafetyService {
    * @returns {Promise<Object>} Current location
    */
   async getTrackingLocation(sessionId, viewerId) {
-    const session = this.trackingSessions.get(sessionId);
+    const session = await this.safetyRepository.getTrackingSessionBySessionId(sessionId);
     if (!session) {
       throw new NotFoundError('Tracking session not found', ERROR_CODES.SESSION_NOT_FOUND);
     }
@@ -442,7 +438,7 @@ class SafetyService {
     });
 
     try {
-      const session = this.trackingSessions.get(sessionId);
+      const session = await this.safetyRepository.getTrackingSessionBySessionId(sessionId);
       if (!session || session.userId !== userId) {
         throw new ForbiddenError('Not authorized', ERROR_CODES.FORBIDDEN);
       }
@@ -454,8 +450,10 @@ class SafetyService {
       const validContacts = emergencyContacts.filter((c) => contactIds.includes(c.contactId));
 
       // Add to shared list
-      session.sharedWith = [...new Set([...session.sharedWith, ...contactIds])];
-      this.trackingSessions.set(sessionId, session);
+      const sharedWith = [...new Set([...(session.sharedWith || []), ...contactIds])];
+      await this.safetyRepository.updateTrackingSession(sessionId, session.bookingId, {
+        sharedWith,
+      });
 
       // Send share notifications
       const shareUrl = `${process.env.APP_URL}/track/${sessionId}`;
@@ -499,7 +497,7 @@ class SafetyService {
     });
 
     try {
-      const session = this.trackingSessions.get(sessionId);
+      const session = await this.safetyRepository.getTrackingSessionBySessionId(sessionId);
       if (!session) {
         return { message: 'Session not found or already stopped' };
       }
@@ -508,12 +506,10 @@ class SafetyService {
         throw new ForbiddenError('Not authorized', ERROR_CODES.FORBIDDEN);
       }
 
-      session.status = 'stopped';
-      session.stoppedAt = formatDate(now());
-      this.trackingSessions.set(sessionId, session);
-
-      // Optionally persist session history for analytics
-      await this._persistTrackingSession(session);
+      await this.safetyRepository.updateTrackingSession(sessionId, session.bookingId, {
+        status: 'stopped',
+        stoppedAt: formatDate(now()),
+      });
 
       return {
         message: 'Tracking stopped',
@@ -731,7 +727,8 @@ class SafetyService {
     }
 
     const shareToken = randomUUID();
-    const session = {
+
+    await this.safetyRepository.createLocationShare({
       shareToken,
       userId,
       bookingId,
@@ -740,9 +737,7 @@ class SafetyService {
       startedAt: formatDate(now()),
       lastLocation: location || null,
       lastUpdateAt: formatDate(now()),
-    };
-
-    this.trackingSessions.set(shareToken, session);
+    });
 
     return {
       shareToken,
@@ -764,18 +759,29 @@ class SafetyService {
       bookingId,
     });
 
-    // Find session by userId and bookingId
-    for (const [token, session] of this.trackingSessions.entries()) {
-      if (session.userId === userId && session.bookingId === bookingId && session.status === 'active') {
-        session.status = 'stopped';
-        session.stoppedAt = formatDate(now());
-        this.trackingSessions.set(token, session);
-        return;
-      }
-    }
+    // Query user's location shares using GSI1
+    const params = {
+      IndexName: 'GSI1',
+      KeyConditionExpression: 'GSI1PK = :gsi1pk',
+      ExpressionAttributeValues: {
+        ':gsi1pk': `USER#${userId}`,
+      },
+    };
 
-    // No active session found - that's okay
-    logger.debug('No active location sharing session found', { userId, bookingId });
+    const { items } = await this.safetyRepository.query(params);
+    const activeShare = items.find(
+      (s) => s.bookingId === bookingId && s.status === 'active',
+    );
+
+    if (activeShare) {
+      await this.safetyRepository.updateLocationShare(activeShare.shareToken, {
+        status: 'stopped',
+        stoppedAt: formatDate(now()),
+      });
+      logger.info('Location sharing stopped', { shareToken: activeShare.shareToken });
+    } else {
+      logger.debug('No active location sharing session found', { userId, bookingId });
+    }
   }
 
   /**
@@ -784,7 +790,7 @@ class SafetyService {
    * @returns {Promise<Object>} Location data
    */
   async getSharedLocation(shareToken) {
-    const session = this.trackingSessions.get(shareToken);
+    const session = await this.safetyRepository.getLocationShare(shareToken);
     if (!session) {
       throw new NotFoundError('Shared location not found or expired', ERROR_CODES.SESSION_NOT_FOUND);
     }
@@ -805,15 +811,10 @@ class SafetyService {
    * @returns {Promise<Object>} Alert details
    */
   async getSOSAlert(alertId, userId) {
-    const alert = this.activeAlerts.get(alertId);
+    const alert = await this.safetyRepository.getAlert(alertId, userId);
     if (!alert) {
       throw new NotFoundError('SOS alert not found', ERROR_CODES.ALERT_NOT_FOUND);
     }
-
-    if (alert.userId !== userId) {
-      throw new ForbiddenError('Not authorized to view this alert', ERROR_CODES.FORBIDDEN);
-    }
-
     return alert;
   }
 
@@ -821,68 +822,24 @@ class SafetyService {
    * Get SOS alerts for a specific user
    * @param {string} userId - User ID
    * @param {Object} options - { status, page, limit }
-   * @returns {Promise<Object>} Paginated alerts
+   * @returns {Promise<Array>} Alerts
    */
   async getUserSOSAlerts(userId, options = {}) {
-    const { status, page = 1, limit = 20 } = options;
-
-    let alerts = Array.from(this.activeAlerts.values()).filter(
-      (alert) => alert.userId === userId,
-    );
-
-    if (status) {
-      alerts = alerts.filter((alert) => alert.status === status);
-    }
-
-    // Sort by most recent first
-    alerts.sort((a, b) => new Date(b.triggeredAt || b.createdAt) - new Date(a.triggeredAt || a.createdAt));
-
-    const total = alerts.length;
-    const start = (page - 1) * limit;
-    const paginatedAlerts = alerts.slice(start, start + limit);
-
-    return {
-      alerts: paginatedAlerts,
-      pagination: {
-        page,
-        limit,
-        total,
-        pages: Math.ceil(total / limit),
-      },
-    };
+    return this.safetyRepository.getAlertsByUser(userId, options);
   }
 
   /**
    * Get all SOS alerts (admin)
    * @param {Object} options - { status, page, limit }
-   * @returns {Promise<Object>} Paginated alerts
+   * @returns {Promise<Object>} Query results
    */
   async getAllSOSAlerts(options = {}) {
-    const { status, page = 1, limit = 20 } = options;
-
-    let alerts = Array.from(this.activeAlerts.values()).filter(
-      (alert) => alert.type === ALERT_TYPE.SOS,
-    );
-
+    const { status } = options;
     if (status) {
-      alerts = alerts.filter((alert) => alert.status === status);
+      return this.safetyRepository.getAlertsByStatus(status, options);
     }
-
-    alerts.sort((a, b) => new Date(b.triggeredAt || b.createdAt) - new Date(a.triggeredAt || a.createdAt));
-
-    const total = alerts.length;
-    const start = (page - 1) * limit;
-    const paginatedAlerts = alerts.slice(start, start + limit);
-
-    return {
-      alerts: paginatedAlerts,
-      pagination: {
-        page,
-        limit,
-        total,
-        pages: Math.ceil(total / limit),
-      },
-    };
+    // If no status filter, query active alerts (most common case)
+    return this.safetyRepository.getAlertsByStatus(ALERT_STATUS.ACTIVE, options);
   }
 
   // ==================== Incident Reporting ====================
@@ -1052,11 +1009,10 @@ class SafetyService {
       userId,
       ...alertData,
       status: ALERT_STATUS.ACTIVE,
-      createdAt: formatDate(now()),
+      triggeredAt: formatDate(now()),
     };
 
-    this.activeAlerts.set(alertId, alert);
-    await this._persistAlert(alert);
+    await this.safetyRepository.createAlert(alert);
 
     // Notify user
     await this.notificationService._sendPushNotification(userId, {
@@ -1203,32 +1159,6 @@ class SafetyService {
     return Math.round((end - start) / (1000 * 60)); // Minutes
   }
 
-  /**
-   * Persist alert to database
-   * @private
-   */
-  async _persistAlert(alert) {
-    // In production, save to DynamoDB
-    logger.debug('Alert persisted', { alertId: alert.alertId });
-  }
-
-  /**
-   * Update alert in database
-   * @private
-   */
-  async _updateAlert(alertId, _alert) {
-    // In production, update in DynamoDB
-    logger.debug('Alert updated', { alertId });
-  }
-
-  /**
-   * Persist tracking session
-   * @private
-   */
-  async _persistTrackingSession(session) {
-    // In production, save to DynamoDB for analytics
-    logger.debug('Tracking session persisted', { sessionId: session.sessionId });
-  }
 
   /**
    * Persist safety report
