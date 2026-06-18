@@ -1121,36 +1121,32 @@ class NotificationService {
    * @private
    */
   async _sendEmailViaProvider(emailData) {
-    const fromEmail = process.env.SES_FROM_EMAIL;
+    const apiKey = process.env.BREVO_API_KEY;
+    const senderEmail = process.env.BREVO_SENDER_EMAIL;
+    const senderName = process.env.BREVO_SENDER_NAME || 'PSRide';
 
-    if (!fromEmail) {
-      logger.warn('SES_FROM_EMAIL not set — skipping real email send', {
+    if (!apiKey || !senderEmail) {
+      logger.warn('BREVO_API_KEY or BREVO_SENDER_EMAIL not set — skipping real email send', {
         template: emailData.template,
         to: emailData.to,
       });
       return { messageId: `skipped_${randomUUID()}` };
     }
 
-    const { SESClient, SendEmailCommand } = require('@aws-sdk/client-ses');
-    const ses = new SESClient({ region: process.env.AWS_REGION || 'eu-west-1' });
+    const BrevoProvider = require('../../infrastructure/email/BrevoProvider');
+    const brevo = new BrevoProvider({ apiKey, senderEmail, senderName });
 
-    const html = this._buildEmailHtml(emailData.template, emailData.data);
-    const text = this._buildEmailText(emailData.template, emailData.data);
+    const htmlContent = this._buildEmailHtml(emailData.template, emailData.data);
+    const textContent = this._buildEmailText(emailData.template, emailData.data);
 
-    const command = new SendEmailCommand({
-      Source: fromEmail,
-      Destination: { ToAddresses: [emailData.to] },
-      Message: {
-        Subject: { Data: emailData.subject, Charset: 'UTF-8' },
-        Body: {
-          Html: { Data: html, Charset: 'UTF-8' },
-          Text: { Data: text, Charset: 'UTF-8' },
-        },
-      },
+    const result = await brevo.send({
+      to: emailData.to,
+      subject: emailData.subject,
+      htmlContent,
+      textContent,
     });
 
-    const result = await ses.send(command);
-    return { messageId: result.MessageId };
+    return { messageId: result.messageId };
   }
 
   /**
