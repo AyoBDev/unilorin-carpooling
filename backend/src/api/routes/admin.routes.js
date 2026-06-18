@@ -14,6 +14,7 @@ const {
   AdminAuthController,
 } = require('../controllers');
 const SupportController = require('../controllers/SupportController');
+const AdminSafetyController = require('../controllers/AdminSafetyController');
 const { authenticate, requireAdmin } = require('../middlewares/auth.middleware');
 const { validateBody } = require('../middlewares/validation.middleware');
 const { adminInviteSchema } = require('../../shared/utils/validation');
@@ -42,11 +43,15 @@ router.post('/vehicles/:userId/:vehicleId/verify', UserController.adminVerifyVeh
 router.post('/notifications/send', NotificationController.adminSendNotification);
 router.post('/notifications/send-bulk', NotificationController.adminSendBulkNotification);
 
-// ─── SAFETY ────────────────────────────────────────────────────
+// ─── SAFETY DASHBOARD ──────────────────────────────────────────
 
-router.get('/safety/sos', SafetyController.adminGetSOSAlerts);
-router.get('/safety/incidents', SafetyController.adminGetIncidents);
-router.post('/safety/incidents/:incidentId/resolve', SafetyController.adminResolveIncident);
+router.get('/safety/sos', AdminSafetyController.getSOSAlerts);
+router.get('/safety/sos/:alertId', AdminSafetyController.getSOSAlertDetail);
+router.put('/safety/sos/:alertId', AdminSafetyController.updateSOSAlert);
+router.get('/safety/incidents', AdminSafetyController.getIncidents);
+router.get('/safety/incidents/:incidentId', AdminSafetyController.getIncidentDetail);
+router.put('/safety/incidents/:incidentId', AdminSafetyController.updateIncident);
+router.get('/safety/stats', AdminSafetyController.getSafetyStats);
 
 // ─── SUPPORT TICKET MANAGEMENT ─────────────────────────────────
 

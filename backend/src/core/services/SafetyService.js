@@ -1180,6 +1180,126 @@ class SafetyService {
     });
     // In production, notify admin team immediately
   }
+
+  // ==================== Admin Dashboard Methods ====================
+
+  /**
+   * Get recent SOS alerts for admin dashboard
+   * @param {Object} options - { limit }
+   * @returns {Promise<Object>} Query results
+   */
+  async getRecentSOSAlerts(options = {}) {
+    const active = await this.safetyRepository.getAlertsByStatus(ALERT_STATUS.ACTIVE, options);
+    const resolved = await this.safetyRepository.getAlertsByStatus(ALERT_STATUS.RESOLVED, { limit: 10 });
+    const escalated = await this.safetyRepository.getAlertsByStatus(ALERT_STATUS.ESCALATED, { limit: 10 });
+
+    const allAlerts = [...active.items, ...resolved.items, ...escalated.items];
+    allAlerts.sort((a, b) => new Date(b.triggeredAt) - new Date(a.triggeredAt));
+
+    return { items: allAlerts.slice(0, options.limit || 20), count: allAlerts.length };
+  }
+
+  /**
+   * Get SOS alert detail with user info (admin)
+   * @param {string} alertId - Alert ID
+   * @returns {Promise<Object>} Alert with user info
+   */
+  async getSOSAlertDetail(alertId) {
+    // Search across statuses since admin doesn't know the userId
+    for (const status of Object.values(ALERT_STATUS)) {
+      const result = await this.safetyRepository.getAlertsByStatus(status, { limit: 100 });
+      const alert = result.items.find((a) => a.alertId === alertId);
+      if (alert) {
+        const user = await this.userRepository.findById(alert.userId);
+        return {
+          ...alert,
+          user: {
+            firstName: user?.firstName,
+            lastName: user?.lastName,
+            email: user?.email,
+            phone: user?.phone,
+          },
+        };
+      }
+    }
+    throw new NotFoundError('SOS alert not found', ERROR_CODES.ALERT_NOT_FOUND);
+  }
+
+  /**
+   * Admin update SOS alert
+   * @param {string} alertId - Alert ID
+   * @param {Object} updates - Fields to update
+   * @returns {Promise<Object>} Updated alert
+   */
+  async adminUpdateSOSAlert(alertId, updates) {
+    const alert = await this.getSOSAlertDetail(alertId);
+    return this.safetyRepository.updateAlert(alertId, alert.userId, updates);
+  }
+
+  /**
+   * Get safety statistics for admin dashboard
+   * @returns {Promise<Object>} Aggregated stats
+   */
+  async getSafetyStats() {
+    const active = await this.safetyRepository.getAlertsByStatus(ALERT_STATUS.ACTIVE, { limit: 100 });
+    const resolved = await this.safetyRepository.getAlertsByStatus(ALERT_STATUS.RESOLVED, { limit: 100 });
+    const escalated = await this.safetyRepository.getAlertsByStatus(ALERT_STATUS.ESCALATED, { limit: 100 });
+
+    const now = new Date();
+    const weekAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
+    const monthAgo = new Date(now - 30 * 24 * 60 * 60 * 1000);
+
+    const allResolved = resolved.items;
+    const thisWeek = allResolved.filter((a) => new Date(a.triggeredAt) > weekAgo);
+    const thisMonth = allResolved.filter((a) => new Date(a.triggeredAt) > monthAgo);
+
+    const resolutionTimes = allResolved
+      .filter((a) => a.resolvedAt)
+      .map((a) => (new Date(a.resolvedAt) - new Date(a.triggeredAt)) / 3600000);
+    const avgResolution = resolutionTimes.length > 0
+      ? resolutionTimes.reduce((s, t) => s + t, 0) / resolutionTimes.length
+      : 0;
+
+    return {
+      activeSosCount: active.count,
+      escalatedCount: escalated.count,
+      incidentsThisWeek: thisWeek.length,
+      incidentsThisMonth: thisMonth.length,
+      averageResolutionHours: Math.round(avgResolution * 10) / 10,
+    };
+  }
+
+  /**
+   * Get incidents (admin)
+   * @param {Object} options - { type, severity, status, limit }
+   * @returns {Promise<Object>} Query results
+   */
+  async getIncidents(options = {}) {
+    // For now, reuse getAlertsByStatus since incidents are tracked as alerts
+    const { status = ALERT_STATUS.ACTIVE } = options;
+    return this.safetyRepository.getAlertsByStatus(status, options);
+  }
+
+  /**
+   * Get incident detail (admin)
+   * @param {string} incidentId - Incident ID
+   * @returns {Promise<Object>} Incident with user info
+   */
+  async getIncidentDetail(incidentId) {
+    // Alias for getSOSAlertDetail
+    return this.getSOSAlertDetail(incidentId);
+  }
+
+  /**
+   * Admin update incident
+   * @param {string} incidentId - Incident ID
+   * @param {Object} updates - Fields to update
+   * @returns {Promise<Object>} Updated incident
+   */
+  async adminUpdateIncident(incidentId, updates) {
+    // Alias for adminUpdateSOSAlert
+    return this.adminUpdateSOSAlert(incidentId, updates);
+  }
 }
 
 module.exports = SafetyService;
