@@ -13,6 +13,7 @@ const {
   ReportController,
   AdminAuthController,
 } = require('../controllers');
+const SupportController = require('../controllers/SupportController');
 const { authenticate, requireAdmin } = require('../middlewares/auth.middleware');
 const { validateBody } = require('../middlewares/validation.middleware');
 const { adminInviteSchema } = require('../../shared/utils/validation');
@@ -46,6 +47,14 @@ router.post('/notifications/send-bulk', NotificationController.adminSendBulkNoti
 router.get('/safety/sos', SafetyController.adminGetSOSAlerts);
 router.get('/safety/incidents', SafetyController.adminGetIncidents);
 router.post('/safety/incidents/:incidentId/resolve', SafetyController.adminResolveIncident);
+
+// ─── SUPPORT TICKET MANAGEMENT ─────────────────────────────────
+
+router.get('/support/tickets', SupportController.adminGetAllTickets);
+router.get('/support/tickets/:ticketId', SupportController.adminGetTicket);
+router.post('/support/tickets/:ticketId/respond', SupportController.adminRespond);
+router.put('/support/tickets/:ticketId/status', SupportController.adminUpdateStatus);
+router.put('/support/tickets/:ticketId/assign', SupportController.adminAssign);
 
 // ─── REPORTS ───────────────────────────────────────────────────
 
