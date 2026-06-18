@@ -36,7 +36,7 @@
 
 'use strict';
 
-const { SESClient, SendEmailCommand } = require('@aws-sdk/client-ses');
+const BrevoProvider = require('../../infrastructure/email/BrevoProvider');
 const { SNSClient, PublishCommand } = require('@aws-sdk/client-sns');
 const webpush = require('web-push');
 const { logger } = require('../../shared/utils/logger');
@@ -52,12 +52,19 @@ if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
   );
 }
 
+// ─── Brevo Email Client (reused across invocations) ────
+
+const brevo = process.env.BREVO_API_KEY
+  ? new BrevoProvider({
+      apiKey: process.env.BREVO_API_KEY,
+      senderEmail: process.env.BREVO_SENDER_EMAIL || 'noreply@psride.ng',
+      senderName: process.env.BREVO_SENDER_NAME || 'PSRide',
+    })
+  : null;
+
 // ─── AWS Clients (reused across invocations) ────────────
 
-const ses = new SESClient({ region: process.env.AWS_REGION || 'eu-west-1' });
 const sns = new SNSClient({ region: process.env.AWS_REGION || 'eu-west-1' });
-
-const SENDER_EMAIL = process.env.SES_SENDER_EMAIL || 'noreply@carpool.unilorin.edu.ng';
 
 // ─── Email Templates ────────────────────────────────────
 
@@ -139,32 +146,29 @@ const EMAIL_TEMPLATES = {
 // ─── Delivery Functions ─────────────────────────────────
 
 /**
- * Send email via AWS SES.
+ * Send email via Brevo.
  */
 const deliverEmail = async (recipient, payload) => {
+  if (!brevo) {
+    logger.warn('BREVO_API_KEY not set — skipping email delivery', {
+      recipient: recipient.email,
+      template: payload.template,
+    });
+    return { status: 'skipped', reason: 'no_api_key' };
+  }
+
   const templateFn = EMAIL_TEMPLATES[payload.template] || EMAIL_TEMPLATES.default;
   const { subject, html } = templateFn(payload.data || {});
 
-  const command = new SendEmailCommand({
-    Source: SENDER_EMAIL,
-    Destination: {
-      ToAddresses: [recipient.email],
-    },
-    Message: {
-      Subject: { Data: subject, Charset: 'UTF-8' },
-      Body: {
-        Html: { Data: html, Charset: 'UTF-8' },
-      },
-    },
-    Tags: [
-      { Name: 'Environment', Value: process.env.NODE_ENV || 'development' },
-      { Name: 'Template', Value: payload.template || 'default' },
-    ],
+  const result = await brevo.send({
+    to: recipient.email,
+    subject,
+    htmlContent: html,
+    tags: [process.env.NODE_ENV || 'development', payload.template || 'default'],
   });
 
-  const result = await ses.send(command);
-  logger.info('Email sent', {
-    messageId: result.MessageId,
+  logger.info('Email sent via Brevo', {
+    messageId: result.messageId,
     recipient: recipient.email,
     template: payload.template,
   });
