@@ -78,7 +78,10 @@ resource "aws_lambda_function" "api" {
 
   environment {
     variables = merge(local.common_env, {
-      FUNCTION_NAME = "api"
+      FUNCTION_NAME      = "api"
+      BREVO_API_KEY      = var.brevo_api_key
+      BREVO_SENDER_EMAIL = var.brevo_sender_email
+      BREVO_SENDER_NAME  = var.brevo_sender_name
     })
   }
 

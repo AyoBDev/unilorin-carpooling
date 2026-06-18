@@ -151,6 +151,24 @@ variable "ses_sender_email" {
   default     = "noreply@carpool.unilorin.edu.ng"
 }
 
+variable "brevo_api_key" {
+  description = "Brevo transactional email API key"
+  type        = string
+  sensitive   = true
+}
+
+variable "brevo_sender_email" {
+  description = "Brevo sender email address"
+  type        = string
+  default     = "noreply@psride.ng"
+}
+
+variable "brevo_sender_name" {
+  description = "Brevo sender display name"
+  type        = string
+  default     = "PSRide"
+}
+
 # ── API Gateway ──────────────────────────────────────────
 
 variable "api_gateway_execution_arn" {

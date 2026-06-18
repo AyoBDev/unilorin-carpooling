@@ -39,6 +39,7 @@ ses_sender_email = "noreply@psride.ng"
 
 # ── Secrets (pass via env vars, never hardcode here) ─────
 vapid_mailto = "mailto:admin@psride.ng"
+brevo_api_key = ""  # Set via -var or CI/secrets manager
 
 # ── DynamoDB ─────────────────────────────────────────────
 dynamodb_billing_mode = "PAY_PER_REQUEST"

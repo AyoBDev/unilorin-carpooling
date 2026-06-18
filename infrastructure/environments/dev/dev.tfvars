@@ -34,6 +34,7 @@ ses_sender_email = "noreply@carpool.unilorin.edu.ng"
 # export VAPID_PUBLIC_KEY=<from: npx web-push generate-vapid-keys>
 # export VAPID_PRIVATE_KEY=<from: npx web-push generate-vapid-keys>
 vapid_mailto = "mailto:admin@psride.ng"
+brevo_api_key = ""  # Set via -var or CI/secrets manager
 
 # ── DynamoDB ─────────────────────────────────────────────
 dynamodb_billing_mode = "PAY_PER_REQUEST"

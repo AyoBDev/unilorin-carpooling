@@ -69,6 +69,9 @@ const EMAIL_TEMPLATES = {
   DOCUMENT_REJECTED: 'document_rejected',
   SOS_ALERT: 'sos_alert',
   SOS_EMERGENCY_CONTACT: 'sos_emergency_contact',
+  SUPPORT_TICKET_CREATED: 'support_ticket_created',
+  SUPPORT_TICKET_RESPONSE: 'support_ticket_response',
+  SUPPORT_TICKET_RESOLVED: 'support_ticket_resolved',
 };
 
 /**
@@ -1489,6 +1492,48 @@ class NotificationService {
       `);
     }
 
+    if (template === EMAIL_TEMPLATES.SUPPORT_TICKET_CREATED) {
+      return base(`
+        ${greeting(data.firstName)}
+        <p style="font-size:15px;margin:0 0 20px;line-height:1.6;">
+          Your support ticket has been submitted successfully.
+        </p>
+        ${infoBox(`
+          ${infoRow('Reference', data.reference)}
+          ${infoRow('Subject', data.ticketSubject)}
+        `)}
+        <p style="font-size:15px;margin:20px 0;line-height:1.6;">
+          Our team will review your ticket and respond as soon as possible. You'll receive an email when we reply.
+        </p>
+      `);
+    }
+
+    if (template === EMAIL_TEMPLATES.SUPPORT_TICKET_RESPONSE) {
+      return base(`
+        ${greeting(data.firstName)}
+        <p style="font-size:15px;margin:0 0 20px;line-height:1.6;">
+          Our support team has responded to your ticket <strong>${data.reference}</strong>:
+        </p>
+        ${infoBox(`<p style="white-space:pre-wrap">${data.responsePreview}</p>`)}
+        <p style="font-size:15px;margin:20px 0;line-height:1.6;">
+          Open the app to view the full response and reply if needed.
+        </p>
+      `);
+    }
+
+    if (template === EMAIL_TEMPLATES.SUPPORT_TICKET_RESOLVED) {
+      return base(`
+        ${greeting(data.firstName)}
+        <p style="font-size:15px;margin:0 0 20px;line-height:1.6;">
+          Your support ticket <strong>${data.reference}</strong> has been resolved.
+        </p>
+        ${infoBox(`${infoRow('Subject', data.ticketSubject)}`)}
+        <p style="font-size:15px;margin:20px 0;line-height:1.6;">
+          If you're still experiencing issues, you can reopen the ticket or create a new one in the app.
+        </p>
+      `);
+    }
+
     // Generic fallback for template: null (admin sendNotification)
     return base(`
       <p style="font-size:15px;line-height:1.6;">${data.message || ''}</p>
@@ -1529,6 +1574,15 @@ class NotificationService {
     }
     if (template === EMAIL_TEMPLATES.SOS_EMERGENCY_CONTACT) {
       return `EMERGENCY ALERT\n\n${data.userName} has triggered an emergency alert on PSRide.\n\nTime: ${data.triggeredAt}\n${data.location ? `Location: https://www.google.com/maps?q=${data.location.latitude},${data.location.longitude}` : ''}\n${data.rideDetails ? `Ride: ${data.rideDetails}` : ''}\n\nTry to contact ${data.userName} immediately. If you cannot reach them, call 112.\nUniversity Security: ${data.universitySecurityPhone || '+2348012345678'}`;
+    }
+    if (template === EMAIL_TEMPLATES.SUPPORT_TICKET_CREATED) {
+      return `Hi ${data.firstName},\n\nYour support ticket (${data.reference}) has been submitted. Our team will respond soon.\n\nSubject: ${data.ticketSubject}\n\n— PSRide Support`;
+    }
+    if (template === EMAIL_TEMPLATES.SUPPORT_TICKET_RESPONSE) {
+      return `Hi ${data.firstName},\n\nOur team responded to ticket ${data.reference}:\n\n${data.responsePreview}\n\nOpen the app to view the full response.\n\n— PSRide Support`;
+    }
+    if (template === EMAIL_TEMPLATES.SUPPORT_TICKET_RESOLVED) {
+      return `Hi ${data.firstName},\n\nYour ticket ${data.reference} ("${data.ticketSubject}") has been resolved.\n\nIf you still need help, create a new ticket in the app.\n\n— PSRide Support`;
     }
     return data.message || '';
   }

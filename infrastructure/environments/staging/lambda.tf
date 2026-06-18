@@ -112,6 +112,11 @@ module "lambda" {
   # ── API Gateway ────────────────────────────────────────
   api_gateway_execution_arn = module.api_gateway.execution_arn
 
+  # ── Email (Brevo) ──────────────────────────────────────
+  brevo_api_key      = var.brevo_api_key
+  brevo_sender_email = var.brevo_sender_email
+  brevo_sender_name  = var.brevo_sender_name
+
   # ── Feature flags ──────────────────────────────────────
   enable_schedules = var.enable_schedules
   enable_warmup    = var.environment != "dev"
@@ -253,6 +258,24 @@ variable "vapid_mailto" {
   description = "VAPID mailto contact (e.g. mailto:admin@psride.ng)"
   type        = string
   default     = "mailto:admin@psride.ng"
+}
+
+variable "brevo_api_key" {
+  description = "Brevo transactional email API key"
+  type        = string
+  sensitive   = true
+}
+
+variable "brevo_sender_email" {
+  description = "Brevo sender email address"
+  type        = string
+  default     = "noreply@psride.ng"
+}
+
+variable "brevo_sender_name" {
+  description = "Brevo sender display name"
+  type        = string
+  default     = "PSRide"
 }
 
 variable "custom_domain_name" {
