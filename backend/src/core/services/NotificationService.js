@@ -1065,8 +1065,7 @@ class NotificationService {
    */
   async _sendEmail(emailData, userId, category, priority = PRIORITY.NORMAL) {
     try {
-      // In production, integrate with AWS SES
-      // For now, we'll simulate the email send
+      // Send via Brevo email provider
       const emailResult = await this._sendEmailViaProvider(emailData);
 
       // Log the notification
@@ -1078,7 +1077,7 @@ class NotificationService {
         category,
         priority,
         status: 'sent',
-        provider: 'aws_ses',
+        provider: 'brevo',
         providerMessageId: emailResult.messageId,
       });
 
@@ -1116,8 +1115,8 @@ class NotificationService {
   }
 
   /**
-   * Send email via AWS SES
-   * Requires env vars: SES_FROM_EMAIL, AWS_REGION
+   * Send email via Brevo
+   * Requires env vars: BREVO_API_KEY, BREVO_SENDER_EMAIL
    * @private
    */
   async _sendEmailViaProvider(emailData) {

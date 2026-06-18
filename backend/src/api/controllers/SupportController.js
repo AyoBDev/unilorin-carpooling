@@ -58,7 +58,7 @@ class SupportController {
       const result = await this.supportService.getMyTickets(req.user.userId, {
         status,
         limit: limit ? parseInt(limit, 10) : undefined,
-        lastKey: lastKey ? JSON.parse(lastKey) : undefined,
+        lastKey: lastKey ? (() => { try { return JSON.parse(lastKey); } catch { return undefined; } })() : undefined,
       });
       return success(res, 'Tickets retrieved', result);
     } catch (error) {

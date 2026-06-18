@@ -457,16 +457,28 @@ class SafetyService {
 
       // Send share notifications
       const shareUrl = `${process.env.APP_URL}/track/${sessionId}`;
-      // SMS disabled - will be replaced with email in Task 6/7
-      // await Promise.all(
-      //   validContacts.map((contact) =>
-      //     this.notificationService.sendSMS(
-      //       contact.phone,
-      //       `${user.firstName} is sharing their ride location with you. Track here: ${shareUrl}`,
-      //       userId,
-      //     ),
-      //   ),
-      // );
+      await Promise.all(
+        validContacts
+          .filter((contact) => contact.email)
+          .map((contact) =>
+            this.notificationService._sendEmail(
+              {
+                to: contact.email,
+                subject: `${user.firstName} is sharing their ride location with you`,
+                template: 'sos_alert',
+                data: {
+                  contactName: contact.name,
+                  userName: `${user.firstName} ${user.lastName}`,
+                  shareUrl,
+                  message: `${user.firstName} is sharing their live ride location with you for safety.`,
+                },
+              },
+              userId,
+              'safety',
+              'normal',
+            ),
+          ),
+      );
 
       return {
         message: 'Tracking shared with emergency contacts',
