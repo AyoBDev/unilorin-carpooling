@@ -68,6 +68,7 @@ const EMAIL_TEMPLATES = {
   DRIVER_APPROVED: 'driver_approved',
   DOCUMENT_REJECTED: 'document_rejected',
   SOS_ALERT: 'sos_alert',
+  SOS_EMERGENCY_CONTACT: 'sos_emergency_contact',
 };
 
 /**
@@ -901,25 +902,21 @@ class NotificationService {
           await this._sendEmail(
             {
               to: contact.email,
-              subject: `🚨 EMERGENCY: SOS Alert from ${user.firstName}`,
-              template: EMAIL_TEMPLATES.SOS_ALERT,
+              subject: `URGENT: ${user.firstName} ${user.lastName} triggered an emergency alert on PSRide`,
+              template: EMAIL_TEMPLATES.SOS_EMERGENCY_CONTACT,
               data: {
                 contactName: contact.name,
                 userName: `${user.firstName} ${user.lastName}`,
-                userPhone: user.phone,
-                locationUrl,
-                location: `${location.latitude}, ${location.longitude}`,
-                rideInfo: booking
-                  ? {
-                      driverName: `${booking.driver.firstName} ${booking.driver.lastName}`,
-                      driverPhone: booking.driver.phone,
-                      vehicleInfo: booking.vehicle
-                        ? `${booking.vehicle.color} ${booking.vehicle.make} ${booking.vehicle.model}`
-                        : '',
-                      plateNumber: booking.vehicle?.plateNumber,
-                    }
+                triggeredAt: formatDateTime(now()),
+                location,
+                rideDetails: booking
+                  ? `${booking.pickupLocation} → ${booking.destination}`
                   : null,
-                timestamp: formatDateTime(now()),
+                driverName: booking?.driver
+                  ? `${booking.driver.firstName} ${booking.driver.lastName}`
+                  : null,
+                message: alertData.message || 'Emergency alert triggered',
+                universitySecurityPhone: '+2348012345678',
               },
             },
             userId,
@@ -1470,6 +1467,28 @@ class NotificationService {
       `);
     }
 
+    if (template === EMAIL_TEMPLATES.SOS_EMERGENCY_CONTACT) {
+      return base(`
+        <div style="background:${LIGHT_RED};padding:20px;border-left:4px solid ${RED};margin-bottom:20px;">
+          <h2 style="color:${RED};margin:0 0 10px;">EMERGENCY ALERT</h2>
+          <p><strong>${data.userName}</strong> has triggered an emergency alert on PSRide.</p>
+        </div>
+        ${infoBox(`
+          ${infoRow('Time', data.triggeredAt)}
+          ${data.location ? infoRow('Location', `<a href="https://www.google.com/maps?q=${data.location.latitude},${data.location.longitude}">View on Google Maps</a>`) : ''}
+          ${data.rideDetails ? infoRow('Ride', data.rideDetails) : ''}
+          ${data.driverName ? infoRow('Driver', data.driverName) : ''}
+          ${data.message ? infoRow('Message', data.message) : ''}
+        `)}
+        <p style="margin-top:20px;"><strong>What to do:</strong></p>
+        <ul>
+          <li>Try to contact ${data.userName} immediately</li>
+          <li>If you cannot reach them, call emergency services: 112</li>
+          <li>University Security: ${data.universitySecurityPhone || '+2348012345678'}</li>
+        </ul>
+      `);
+    }
+
     // Generic fallback for template: null (admin sendNotification)
     return base(`
       <p style="font-size:15px;line-height:1.6;">${data.message || ''}</p>
@@ -1507,6 +1526,9 @@ class NotificationService {
     }
     if (template === EMAIL_TEMPLATES.SOS_ALERT) {
       return `EMERGENCY: ${data.userName} triggered an SOS alert.\nPhone: ${data.userPhone}\nLocation: ${data.locationUrl}\nTime: ${data.timestamp}\n\nContact emergency services (112) if unreachable.`;
+    }
+    if (template === EMAIL_TEMPLATES.SOS_EMERGENCY_CONTACT) {
+      return `EMERGENCY ALERT\n\n${data.userName} has triggered an emergency alert on PSRide.\n\nTime: ${data.triggeredAt}\n${data.location ? `Location: https://www.google.com/maps?q=${data.location.latitude},${data.location.longitude}` : ''}\n${data.rideDetails ? `Ride: ${data.rideDetails}` : ''}\n\nTry to contact ${data.userName} immediately. If you cannot reach them, call 112.\nUniversity Security: ${data.universitySecurityPhone || '+2348012345678'}`;
     }
     return data.message || '';
   }
