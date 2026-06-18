@@ -6,8 +6,8 @@
  *
  * Consumes messages from the notifications SQS queue and
  * delivers them via the appropriate channel:
- *   - email  → AWS SES
- *   - sms    → AWS SNS
+ *   - email  → Brevo
+ *   - sms    → disabled (no-op)
  *   - push   → Web Push / FCM
  *   - in_app → Already persisted by NotificationService
  *
@@ -37,7 +37,6 @@
 'use strict';
 
 const BrevoProvider = require('../../infrastructure/email/BrevoProvider');
-const { SNSClient, PublishCommand } = require('@aws-sdk/client-sns');
 const webpush = require('web-push');
 const { logger } = require('../../shared/utils/logger');
 const { withMiddleware } = require('../middleware/lambdaMiddleware');
@@ -62,9 +61,6 @@ const brevo = process.env.BREVO_API_KEY
     })
   : null;
 
-// ─── AWS Clients (reused across invocations) ────────────
-
-const sns = new SNSClient({ region: process.env.AWS_REGION || 'eu-west-1' });
 
 // ─── Email Templates ────────────────────────────────────
 
@@ -176,40 +172,14 @@ const deliverEmail = async (recipient, payload) => {
 };
 
 /**
- * Send SMS via AWS SNS.
+ * SMS delivery (disabled).
  */
 const deliverSms = async (recipient, payload) => {
-  // Ensure Nigerian format: +234XXXXXXXXXX
-  let phone = recipient.phone;
-  if (phone.startsWith('0')) {
-    phone = `+234${phone.slice(1)}`;
-  } else if (!phone.startsWith('+')) {
-    phone = `+234${phone}`;
-  }
-
-  const message = payload.data?.body || payload.data?.message || payload.body || '';
-
-  const command = new PublishCommand({
-    PhoneNumber: phone,
-    Message: `UniLorin Carpool: ${message}`.slice(0, 160), // SMS limit
-    MessageAttributes: {
-      'AWS.SNS.SMS.SenderID': {
-        DataType: 'String',
-        StringValue: 'UniCarpool',
-      },
-      'AWS.SNS.SMS.SMSType': {
-        DataType: 'String',
-        StringValue: payload.metadata?.priority === 'high' ? 'Transactional' : 'Promotional',
-      },
-    },
+  logger.debug('SMS channel disabled — skipping delivery', {
+    recipient: recipient.phone,
+    template: payload.template,
   });
-
-  const result = await sns.send(command);
-  logger.info('SMS sent', {
-    messageId: result.MessageId,
-    phone: `${phone.slice(0, 7)}****`,
-  });
-  return result;
+  return { status: 'disabled', messageId: null };
 };
 
 /**
