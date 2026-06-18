@@ -119,6 +119,8 @@ class SafetyRepository extends BaseRepository {
       SK: `TRACKING#${sessionData.sessionId}`,
       GSI1PK: 'TRACKING#ACTIVE',
       GSI1SK: sessionData.startedAt,
+      GSI2PK: `SESSION#${sessionData.sessionId}`,
+      GSI2SK: 'TRACKING',
       EntityType: 'SAFETY_SESSION',
       ...sessionData,
       locations: sessionData.locations || [],

@@ -353,8 +353,11 @@ resource "aws_lambda_function" "sqs_notification" {
 
   environment {
     variables = merge(local.common_env, {
-      FUNCTION_NAME    = "sqs-notification"
-      SES_SENDER_EMAIL = var.ses_sender_email
+      FUNCTION_NAME      = "sqs-notification"
+      SES_SENDER_EMAIL   = var.ses_sender_email
+      BREVO_API_KEY      = var.brevo_api_key
+      BREVO_SENDER_EMAIL = var.brevo_sender_email
+      BREVO_SENDER_NAME  = var.brevo_sender_name
     })
   }
 
