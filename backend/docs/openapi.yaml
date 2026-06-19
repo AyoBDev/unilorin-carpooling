@@ -11,6 +11,11 @@ info:
     Admin users have a separate auth flow via `/auth/admin/login` and `/auth/admin/register`.
     Admin registration requires a master secret or an invite code from an existing admin.
 
+    **Dev Admin Credentials:**
+    - Email: `testadmin@psride.ng`
+    - Password: `AdminPass123!`
+    - Admin Registration Secret: `psride-admin-dev-2026`
+
     Tokens expire based on `JWT_EXPIRY` config. Use `/auth/refresh-token` with a refresh token to get a new access token.
 
     ## Rate Limiting
@@ -31,7 +36,41 @@ info:
 
     ## Error Handling
     All errors follow a consistent format with error codes from the `ErrorCodes` enum.
-  version: 1.5.0
+
+    ## Push Notifications
+    PSRide uses the Web Push protocol with VAPID keys for browser push notifications.
+
+    **Frontend integration:**
+    1. Get the VAPID public key via `GET /notifications/push/vapid-key`
+    2. Register a service worker and subscribe to push using the VAPID key
+    3. Send the subscription object to `POST /notifications/push/subscribe`
+    4. To unsubscribe, call `POST /notifications/push/unsubscribe`
+
+    Notifications are delivered via SQS → Lambda for email and push channels.
+    SMS is currently disabled. Email is delivered via Brevo transactional API.
+    In-app notifications are stored in DynamoDB and retrievable via the notifications endpoints.
+
+    ## Route Calculation (Mapbox)
+    Ride routes are calculated using the Mapbox Directions API when `MAPBOX_ACCESS_TOKEN` is configured.
+    The API returns distance (km), duration (minutes), and a polyline6-encoded geometry for map rendering.
+    Pickup point waypoints are included in the route calculation for accurate estimates.
+
+    When the Mapbox token is missing or the API call fails, the system falls back to Haversine
+    great-circle distance estimation (no polyline, approximate duration at 3 min/km).
+
+    ## Booking Concurrency
+    Seat reservation uses DynamoDB atomic conditional updates to prevent overbooking.
+    The `availableSeats` field is decremented atomically with a condition expression
+    (`availableSeats >= requestedSeats`) before the booking record is created.
+    If booking creation fails after seat reservation, seats are automatically rolled back.
+
+    ## File Uploads
+    All file uploads (profile photos, driver documents, vehicle photos) use S3 presigned URLs:
+    1. `POST /uploads/presign` — get a presigned PUT URL (valid 15 minutes)
+    2. `PUT` the file directly to S3 using the returned URL
+    3. `POST /uploads/confirm` — verify the upload succeeded
+    4. Pass the S3 `key` to the relevant create/update endpoint
+  version: 1.7.0
   contact:
     name: PSRide Team
   license:
@@ -58,6 +97,8 @@ tags:
     description: User notifications and preferences
   - name: Safety
     description: SOS alerts, location sharing, incident reports
+  - name: Support
+    description: Support ticket system — create, track, and resolve help requests
   - name: Reports
     description: Driver-facing cash, earnings, and summary reports
   - name: Uploads
@@ -677,7 +718,15 @@ paths:
     post:
       tags: [Users]
       summary: Add a vehicle
-      description: Requires verified email.
+      description: |
+        Add a vehicle to the authenticated driver's profile. Requires a verified email
+        and driver registration.
+
+        ## Vehicle Photos
+        To attach photos, first upload each image via `POST /uploads/presign`
+        with `category: "vehicle-photo"`, then PUT the file to the returned `uploadUrl`.
+        Optionally confirm each upload via `POST /uploads/confirm`.
+        Pass the returned S3 `key` values in the `vehiclePhotos` array (up to 5).
       operationId: addVehicle
       security:
         - BearerAuth: []
@@ -2563,6 +2612,136 @@ paths:
           $ref: '#/components/responses/Unauthorized'
 
   # ──────────────────────────────────────────────
+  # SUPPORT TICKET ENDPOINTS
+  # ──────────────────────────────────────────────
+  /support/tickets:
+    post:
+      tags: [Support]
+      summary: Create a support ticket
+      operationId: createSupportTicket
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [category, subject, description]
+              properties:
+                category:
+                  type: string
+                  enum: [account_issue, ride_dispute, payment_issue, safety_concern, driver_complaint, app_bug, other]
+                subject:
+                  type: string
+                  minLength: 5
+                  example: Driver took wrong route
+                description:
+                  type: string
+                  minLength: 10
+                  example: The driver deviated significantly from the agreed route
+      responses:
+        '201':
+          description: Ticket created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    $ref: '#/components/schemas/SupportTicket'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    get:
+      tags: [Support]
+      summary: Get my support tickets
+      operationId: getMyTickets
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [OPEN, IN_PROGRESS, RESOLVED, CLOSED]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: lastKey
+          in: query
+          schema:
+            type: string
+          description: JSON-encoded pagination cursor
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /support/tickets/{ticketId}:
+    get:
+      tags: [Support]
+      summary: Get a specific ticket (must own it)
+      operationId: getSupportTicket
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: ticketId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Ticket detail with responses
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    $ref: '#/components/schemas/SupportTicket'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /support/tickets/{ticketId}/close:
+    post:
+      tags: [Support]
+      summary: Close own ticket
+      operationId: closeSupportTicket
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: ticketId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ──────────────────────────────────────────────
   # REPORT ENDPOINTS (Driver)
   # ──────────────────────────────────────────────
   /reports/driver/cash:
@@ -2852,14 +3031,16 @@ paths:
           application/json:
             schema:
               type: object
-              required: [approved]
+              required: [status]
               properties:
-                approved:
-                  type: boolean
-                rejectionReason:
+                status:
+                  type: string
+                  enum: [verified, rejected]
+                  description: Driver verification decision
+                reason:
                   type: string
                   maxLength: 500
-                  description: Required when approved is false
+                  description: Required when status is rejected
       responses:
         '200':
           $ref: '#/components/responses/Success'
@@ -2893,6 +3074,114 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/vehicles/pending:
+    get:
+      tags: [Admin]
+      summary: List pending vehicles
+      description: Retrieve all vehicles awaiting admin verification.
+      operationId: adminGetPendingVehicles
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 100
+          description: Maximum number of results
+      responses:
+        '200':
+          description: Pending vehicles retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Pending vehicles retrieved
+                  data:
+                    type: object
+                    properties:
+                      vehicles:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Vehicle'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/vehicles/{userId}/{vehicleId}/verify:
+    post:
+      tags: [Admin]
+      summary: Verify or reject a vehicle
+      description: Approve or reject a vehicle submitted for verification.
+      operationId: adminVerifyVehicle
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/VehicleId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [verified, rejected]
+                  description: Vehicle verification decision
+                reason:
+                  type: string
+                  maxLength: 500
+                  description: Required when status is rejected
+      responses:
+        '200':
+          description: Vehicle verification updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Vehicle verified successfully
+                  data:
+                    type: object
+                    properties:
+                      vehicle:
+                        type: object
+                        properties:
+                          vehicleId:
+                            type: string
+                            format: uuid
+                          userId:
+                            type: string
+                            format: uuid
+                          status:
+                            type: string
+                            enum: [verified, rejected]
+                          reason:
+                            type: string
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -2971,10 +3260,16 @@ paths:
   /admin/safety/sos:
     get:
       tags: [Admin]
-      summary: Get all SOS alerts
+      summary: Get active and recent SOS alerts
       operationId: adminGetSOSAlerts
       security:
         - BearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
       responses:
         '200':
           $ref: '#/components/responses/Success'
@@ -2982,14 +3277,92 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+
+  /admin/safety/sos/{alertId}:
+    get:
+      tags: [Admin]
+      summary: Get SOS alert detail with user info
+      operationId: adminGetSOSAlertDetail
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: alertId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Admin]
+      summary: Update SOS alert (escalate, assign, add notes)
+      operationId: adminUpdateSOSAlert
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: alertId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [active, resolved, false_alarm, escalated]
+                notes:
+                  type: string
+                assignedTo:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /admin/safety/incidents:
     get:
       tags: [Admin]
-      summary: Get all incident reports
+      summary: Get all incidents (filterable)
       operationId: adminGetIncidents
       security:
         - BearerAuth: []
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+        - name: severity
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
       responses:
         '200':
           $ref: '#/components/responses/Success'
@@ -2998,11 +3371,11 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
 
-  /admin/safety/incidents/{incidentId}/resolve:
-    post:
+  /admin/safety/incidents/{incidentId}:
+    get:
       tags: [Admin]
-      summary: Resolve an incident
-      operationId: adminResolveIncident
+      summary: Get incident detail
+      operationId: adminGetIncidentDetail
       security:
         - BearerAuth: []
       parameters:
@@ -3012,6 +3385,236 @@ paths:
           schema:
             type: string
             format: uuid
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Admin]
+      summary: Update incident (status, assign, notes)
+      operationId: adminUpdateIncident
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: incidentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [REPORTED, INVESTIGATING, ACTION_TAKEN, RESOLVED, DISMISSED]
+                notes:
+                  type: string
+                assignedTo:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/safety/stats:
+    get:
+      tags: [Admin]
+      summary: Get safety overview statistics
+      operationId: adminGetSafetyStats
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Safety statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: object
+                    properties:
+                      activeSosCount: { type: integer }
+                      escalatedCount: { type: integer }
+                      incidentsThisWeek: { type: integer }
+                      incidentsThisMonth: { type: integer }
+                      averageResolutionHours: { type: number }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/support/tickets:
+    get:
+      tags: [Admin]
+      summary: Get all support tickets (filterable)
+      operationId: adminGetAllTickets
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [OPEN, IN_PROGRESS, RESOLVED, CLOSED]
+        - name: priority
+          in: query
+          schema:
+            type: string
+            enum: [LOW, MEDIUM, HIGH]
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/support/tickets/{ticketId}:
+    get:
+      tags: [Admin]
+      summary: Get ticket detail (any ticket)
+      operationId: adminGetTicketDetail
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: ticketId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/support/tickets/{ticketId}/respond:
+    post:
+      tags: [Admin]
+      summary: Add admin response to ticket
+      operationId: adminRespondToTicket
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: ticketId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message:
+                  type: string
+                  minLength: 1
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/support/tickets/{ticketId}/status:
+    put:
+      tags: [Admin]
+      summary: Update ticket status
+      operationId: adminUpdateTicketStatus
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: ticketId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [OPEN, IN_PROGRESS, RESOLVED, CLOSED]
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/support/tickets/{ticketId}/assign:
+    put:
+      tags: [Admin]
+      summary: Assign ticket to an admin
+      operationId: adminAssignTicket
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: ticketId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [assigneeId]
+              properties:
+                assigneeId:
+                  type: string
+                  format: uuid
       responses:
         '200':
           $ref: '#/components/responses/Success'
@@ -4121,10 +4724,66 @@ components:
           type: string
           nullable: true
 
+    # ── Support Ticket ────────────────────────
+    SupportTicket:
+      type: object
+      properties:
+        ticketId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        reference:
+          type: string
+          example: PSR-M1234ABC
+        category:
+          type: string
+          enum: [account_issue, ride_dispute, payment_issue, safety_concern, driver_complaint, app_bug, other]
+        subject:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [OPEN, IN_PROGRESS, RESOLVED, CLOSED]
+        priority:
+          type: string
+          enum: [LOW, MEDIUM, HIGH]
+        assignedTo:
+          type: string
+          format: uuid
+          nullable: true
+        responses:
+          type: array
+          items:
+            type: object
+            properties:
+              responderId:
+                type: string
+                format: uuid
+              message:
+                type: string
+              isAdmin:
+                type: boolean
+              createdAt:
+                type: string
+                format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        resolvedAt:
+          type: string
+          format: date-time
+          nullable: true
+
     # ── Request Bodies ─────────────────────────
     RegisterRequest:
       type: object
-      required: [email, password, confirmPassword, firstName, lastName, phone, role]
+      required: [email, password, confirmPassword, firstName, lastName, role]
       properties:
         email:
           type: string
@@ -4400,6 +5059,12 @@ components:
         insuranceExpiry:
           type: string
           format: date
+        vehiclePhotos:
+          type: array
+          items:
+            type: string
+          maxItems: 5
+          description: S3 keys of vehicle photos (upload via presigned URL first)
 
     UpdateVehicleRequest:
       type: object

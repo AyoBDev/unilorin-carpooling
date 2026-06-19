@@ -11,6 +11,11 @@ info:
     Admin users have a separate auth flow via `/auth/admin/login` and `/auth/admin/register`.
     Admin registration requires a master secret or an invite code from an existing admin.
 
+    **Dev Admin Credentials:**
+    - Email: `testadmin@psride.ng`
+    - Password: `AdminPass123!`
+    - Admin Registration Secret: `psride-admin-dev-2026`
+
     Tokens expire based on `JWT_EXPIRY` config. Use `/auth/refresh-token` with a refresh token to get a new access token.
 
     ## Rate Limiting
