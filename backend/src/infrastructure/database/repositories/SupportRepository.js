@@ -91,7 +91,7 @@ class SupportRepository extends BaseRepository {
   }
 
   async updateTicket(ticketId, userId, updates) {
-    const newUpdates = { ...updates, updatedAt: new Date().toISOString() };
+    const newUpdates = { ...updates };
     if (updates.status) {
       newUpdates.GSI1PK = `TICKET#STATUS#${updates.status}`;
     }
@@ -107,7 +107,6 @@ class SupportRepository extends BaseRepository {
 
     return this.update(`USER#${ticket.userId}`, `TICKET#${ticketId}`, {
       responses,
-      updatedAt: new Date().toISOString(),
     });
   }
 }

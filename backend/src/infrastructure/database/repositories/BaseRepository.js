@@ -159,8 +159,8 @@ class BaseRepository {
       if (error.name === 'ConditionalCheckFailedException') {
         throw new AppError('Update condition failed', 400);
       }
-      logger.error(`Failed to update ${this.entityType}`, { error, pk, sk });
-      throw new AppError(`Failed to update ${this.entityType}`, 500);
+      logger.error(`Failed to update ${this.entityType}`, { error: error.message, pk, sk });
+      throw new AppError(`Failed to update ${this.entityType}: ${error.message}`, 500);
     }
   }
 
