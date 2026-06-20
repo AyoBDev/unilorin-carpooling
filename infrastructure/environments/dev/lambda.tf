@@ -269,7 +269,7 @@ variable "brevo_api_key" {
 variable "brevo_sender_email" {
   description = "Brevo sender email address"
   type        = string
-  default     = "noreply@psride.ng"
+  default     = "taverncentral0@gmail.com"
 }
 
 variable "brevo_sender_name" {
